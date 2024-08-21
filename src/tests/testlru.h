@@ -1,4 +1,4 @@
-#include "unity/src/unity.h"
+#include "./unity/src/unity.h" 
 #include "../ds/cache.h"
 
 #pragma once
@@ -12,7 +12,7 @@ void test_cache_init(){
     ll_node * head=  c->queue->head;
     for (int i = 0; i < c->max_pages; i++){
         TEST_ASSERT_NOT_NULL(head);
-        byte_buffer * buf = (byte_buffer *) head->data;
+        byte_buffer * buf =  ((cache_entry*)head->data)->buf;
         TEST_ASSERT_EQUAL_INT(buf->curr_bytes, 0);
         head = head->next;
 
@@ -26,21 +26,22 @@ void test_cache_add_and_get(){
         fwrite("ab", 2, 1, dummy);
     }
     rewind(dummy);
-    add_page(c, dummy, "no");
-    byte_buffer* test= (byte_buffer*)get_page(c, "no");
+    add_page(c, dummy, "no", 2048);
+    ll_node * n = get_page(c, "no");
+    byte_buffer* test= ((cache_entry*)n->data)->buf;
     TEST_ASSERT_NOT_NULL(test);
     TEST_ASSERT_EQUAL_INT(2048, test->curr_bytes);
     remove("dummy.bin");
     free_cache(c);
 }
 void test_cache_evict(){
-    cache * c = create_cache(1024*1024, 2048);
+    cache * c = create_cache(2048, 2048);
     FILE * dummy = fopen("dummy.bin", "wb+");
     for (int i = 0;  i < 1024; i++){
         fwrite("ab", 2, 1, dummy);
     }
     rewind(dummy);
-    add_page(c, dummy,"lm");
+    add_page(c, dummy,"lm",2048);
     remove("dummy.bin");
     evict(c);
     TEST_ASSERT_NULL(get_page(c,"lm"));

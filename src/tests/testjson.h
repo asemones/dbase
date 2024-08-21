@@ -28,11 +28,10 @@ void test_deserialize_dict(void) {
     char json[] = "{\"key\":\"value\",\"no\":\"value2\"}";
     byte_buffer * buffer = create_buffer(1024);
     dict *d = Dict();
-    byte_buffer * dict_buffer = create_buffer(1024);
     size_t buffer_size = sizeof(json);
     write_buffer(buffer, json, strlen(json));
 
-    deseralize_into_structure(&add_kv_void, d,buffer, dict_buffer);
+    deseralize_into_structure(&add_kv_void, d,buffer);
     TEST_ASSERT_EQUAL_STRING("value", get_v(d, (void*)"key"));
     free_dict_no_element(d);
 }
@@ -55,7 +54,7 @@ void test_write_read_json(void){
     byte_buffer* dictBuffer = create_buffer(1024);
     int l= read_file(buffer2->buffy,"test.bin","rb", 1, buffer->curr_bytes);
     fprintf(stderr, "read %d bytes\n", l);
-    deseralize_into_structure(&add_kv_void, d,buffer2,dictBuffer);
+    deseralize_into_structure(&add_kv_void, d,buffer2);
     TEST_ASSERT_EQUAL_STRING("value", get_v(d, (void*)"key"));
     TEST_ASSERT_EQUAL_STRING("value2", get_v(d, (void*)"key2"));
     free_buffer(buffer);
@@ -68,13 +67,13 @@ void test_numeric_read_write(void){
     add_kv(d, (void*)key, (void*)&value);
     byte_buffer* buffer = create_buffer(1024);
     byte_buffer* buffer2 = create_buffer(1024);
-    byte_buffer* dictBuffer = create_buffer(1024);
     seralize_dict(d, buffer, NUMBER);
     write_file(buffer->buffy, "test.bin", "wb", 1, buffer->curr_bytes);
     read_file(buffer2->buffy,"test.bin","rb", 1,buffer->curr_bytes);
-    deseralize_into_structure(&add_kv_void, d,buffer2,dictBuffer);
+    deseralize_into_structure(&add_kv_void, d,buffer2);
     TEST_ASSERT_EQUAL_INT(value, *((size_t*)get_v(d, (void*)"key")));
     free_buffer(buffer);
+    free_buffer(buffer2);
     free_dict_no_element(d);
 
 

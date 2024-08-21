@@ -3,15 +3,8 @@
 #include <string.h>
 #include "testhashtble.h"
 #include "testlist.h"
-#include "testurl.h"
-#include "testrequest.h"
-#include "testresponse.h"
-#include "testexternals.h"
-#include "testhtmlparse.h"
 #include "testfrontier.h"
 #include "testthreadp.h"
-#include "testextractors.h"
-#include "testcrawler.h"
 #include "testbloom.h"
 #include "testio.h"
 #include "testbtree.h"
@@ -60,64 +53,6 @@ int main(void) {
     RUN_TEST(test_dequeue);
     RUN_TEST(test_peek);
     RUN_TEST(test_freeFront);
-    /*
-    fprintf(stderr, "RUNNING URL.H TESTS:\n");
-    RUN_TEST(test_fromURL_NullURL);
-    RUN_TEST(test_fromURL_InvalidProtocol);
-    RUN_TEST(test_fromURL_HTTPURL);
-    RUN_TEST(test_fromURL_HTTPSURL);
-    RUN_TEST(test_freeUrlInfo_Null);
-    RUN_TEST(test_freeUrlInfo_Valid);
-    RUN_TEST(test_buildSubDirectories);
-    RUN_TEST(test_updateURL);
-    RUN_TEST(test_attemptRepair_null_url);
-    RUN_TEST(test_attemptRepair_empty_url);
-    RUN_TEST(test_attemptRepair_add_protocol);
-    RUN_TEST(test_attemptRepair_keep_existing_protocol);
-    RUN_TEST(test_attemptRepair_strip_hash);
-    RUN_TEST(test_attemptRepair_keep_hash);
-    RUN_TEST(test_attemptRepair_complex_url);
-    RUN_TEST(test_attemptRepair_edge_case);
-    fprintf(stderr, "RUNNING REQUEST.H TESTS:\n");
-    RUN_TEST(test_fromParams_valid_input);
-    RUN_TEST(test_buildHeaderStr);
-    RUN_TEST(test_buildReqLine);
-    RUN_TEST(test_updateRequest);
-    fprintf(stderr, "RUNNING RESPONSE.H TESTS:\n");
-    RUN_TEST(test_extractResponseCode_valid_code);
-    RUN_TEST(test_extractResponseCode_invalid_code);
-    RUN_TEST(test_parseHTTPRes_valid_input);
-    RUN_TEST(test_parseHTTPRes_invalid_input);
-    fprintf(stderr, "RUNNING EXTERNAL FUNCTION TESTS: SEND_REQUEST:\n");
-    RUN_TEST(test_SEND_REQUEST_with_null_headers);
-    RUN_TEST(test_SEND_REQUEST_with_valid_headers);
-    RUN_TEST(test_SEND_REQUEST_with_POST);
-    fprintf(stderr, "RUNNING HTMLPARSING.H TESTS:\n");
-    RUN_TEST(test_cleanBody_success);
-    RUN_TEST(test_cleanBody_failure);
-    RUN_TEST(test_getNodeType);
-    RUN_TEST(test_findAllText);
-    RUN_TEST(test_getAllAttributes);
-    RUN_TEST(test_screenAttributes);
-    RUN_TEST(test_findTag);
-    RUN_TEST(test_yoinkUrl);
-    RUN_TEST(test_cleanText);
-    fprintf(stderr, "RUNNING THREADPOOL TESTS:\n");
-    RUN_TEST(test_threadPool_initialization);
-    RUN_TEST(test_addWork_to_threadPool);
-    RUN_TEST(test_execute_work_in_threadPool);
-    RUN_TEST(test_destroy_threadPool);
-    fprintf(stderr, "RUNNING EXTRACTOR TESTS\n");
-    RUN_TEST(test_Extractor_creates_extractor);
-    RUN_TEST(test_processPageText);
-    RUN_TEST(test_extract);
-    RUN_TEST(test_FreeExtractor);
-    fprintf(stderr, "RUNNING CRAWLER TESTS\n");
-    RUN_TEST(test_initCrawl_empty);
-    RUN_TEST(test_initCrawl_regular);
-    //RUN_TEST(test_updateCrawler);
-    RUN_TEST(test_bfs);
-    */
     fprintf(stderr, "RUNNING BLOOM FILTER TESTS\n");
     RUN_TEST(test_create_bit_array);
     RUN_TEST(test_set_and_get_bit);
@@ -160,6 +95,7 @@ int main(void) {
     RUN_TEST(test_cache_init);
     RUN_TEST(test_cache_add_and_get);
     RUN_TEST(test_cache_evict);
+    
 
     return UNITY_END();
 }

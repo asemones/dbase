@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
-#include <sys/event.h>
 #include <sys/time.h>
 #include <string.h>
 #include <pthread.h>
@@ -11,7 +10,7 @@
 #define IO_H
 //typedef void (*aioCallback)(void * fd, void *arg);
 //typedef void (*aioCallback)(void * fd, void **arg);
-
+/*
 typedef struct event_loop {
     int kq;
     size_t max_events;
@@ -24,7 +23,7 @@ typedef struct event_loop {
 event_loop* create_loop(size_t size);
 //int add(eventLoop* loop, int fd, short filter, aioCallback* callback, void* userdata);
 void run_loop(event_loop * loop);
-
+*/
 
 int write_file(char * buf, char * file, char * mode, size_t bytes, size_t element);
 int read_file( char * buf, char * file, char * mode, size_t bytes, size_t element);

@@ -3,6 +3,7 @@
 #include "../../ds/hashtbl.h"
 #include "../../ds/byte_buffer.h"
 #include "../../util/alloc_util.h"
+#include "../../ds/associative_array.h"
 #ifndef JSON_H
 #define JSON_H
 //why did i do this
@@ -65,7 +66,112 @@ int findJsonType(const char value){
             return NUMBER;
     }
 }
-size_t deseralize_one(void (*insert_func)(void *, void *, void *), byte_buffer * buffer, byte_buffer * key_values, void * data_struct){
+size_t deseralize_one(void (*insert_func)(void *, void *, void *), byte_buffer * buffer, void * data_struct){
+    char * ret_check = NULL;
+
+    if ((ret_check = go_nearest_v(buffer, '\"')) == NULL) return -1;
+    char *key_start = NULL, *value_start = NULL, *value_end = NULL;
+    key_start = get_next(buffer);
+    if ((ret_check = go_nearest_v(buffer, '\"')) == NULL) return -1;
+    buffer->buffy[buffer->read_pointer] = '\0';
+    /*
+    real_key_start = &key_values->buffy[key_values->curr_bytes];
+    write_buffer(key_values, key_start, key_length);
+    write_buffer(key_values, "\0", 1);
+    */
+    if ((ret_check = go_nearest_v(buffer, ':')) == NULL) return -1;
+
+    if ((ret_check = go_nearest_v(buffer, '\"')) == NULL) return -1;
+    value_start = get_curr(buffer);
+    int type = findJsonType(*value_start);
+
+    switch (type) {
+        case STRING:
+                    value_start = get_next(buffer);
+                    //real_value_start =  &key_values->buffy[key_values->curr_bytes];
+                    while(1){
+                        value_end = go_nearest_v(buffer, '\"');
+                        if (value_end != NULL && *(value_end - 1) != '\\') break; 
+                        if (value_end == NULL) return -1;           
+                    }
+                    if (value_end == NULL) return -1;
+                    buffer->buffy[buffer->read_pointer] = '\0';
+            
+            break;
+        case NUMBER:   
+            value_end = &buffer->buffy[buffer->read_pointer + sizeof(size_t)];
+            buffer->read_pointer += sizeof(size_t);
+            break;
+        case OBJECT:
+           
+            break;
+        case ARRAY:
+           
+            break;
+        case BOOL:
+           
+            break;
+        default:
+            break;
+    }
+    //size_t value_length = value_end - value_start;
+    //write_buffer(key_values, value_start, value_length);
+    //write_buffer(key_values, "\0", 1);
+    (insert_func(key_start, value_start, data_struct));
+    if ((ret_check = go_nearest_v(buffer, ',')) == NULL) return -1;
+    return 0;
+
+}
+size_t deseralize_into_structure(void (*insert_func)(void *, void *, void *),void * structure, byte_buffer * buffer) {
+    size_t ret = 0;
+    while(buffer->read_pointer < buffer->curr_bytes && ret != -1 ){
+        ret = deseralize_one(insert_func,buffer, structure);
+    }
+    return 0;
+}
+size_t back_track(byte_buffer * buffer, const char targ, size_t curr_pos, size_t max_len){
+    
+    while(curr_pos >0){
+        const char c = buffer->buffy[curr_pos];
+        if (c == targ && curr_pos < max_len) return curr_pos;
+        curr_pos--;
+    }
+    return curr_pos;
+}
+int get_next_key(byte_buffer * buffer, char * store){
+    char * ret_check = NULL;
+    if ((ret_check = go_nearest_v(buffer, '\"')) == NULL) return -1;
+    char *key_start = NULL, *key_end = NULL;
+    key_start = get_next(buffer);
+    if ((ret_check = go_nearest_v(buffer, '\"')) == NULL)return -1;
+    key_end = get_curr(buffer);
+    size_t key_length = key_end - key_start;
+    memcpy(store, key_start, key_length);
+    store[key_length] = '\0';
+    go_nearest_v(buffer, ':');
+    get_next(buffer);
+    go_nearest_v(buffer, '\"');
+    get_next(buffer);
+    go_nearest_v(buffer, '\"');
+    get_next(buffer);
+
+    return key_length;
+}
+int json_b_search(k_v_arr * json, const char * target){
+    int max = json->len -1;
+    size_t min = 0;
+    char ** keys = json->keys;
+    while(min <= max){
+        size_t mid = (max + min) /2;
+        char * temp = keys[mid];
+        int cmp = strcmp(temp, target);
+        if (cmp == 0) return mid;
+        else if (cmp < 0) min = mid + 1;
+        else max= mid-1;
+    }
+    return -1;   
+}
+size_t deseralize_one_2(void (*insert_func)(void *, void *, void *), byte_buffer * buffer, byte_buffer * key_values, void * data_struct){
     char * ret_check = NULL;
 
     if ((ret_check = go_nearest_v(buffer, '\"')) == NULL) return -1;
@@ -123,39 +229,11 @@ size_t deseralize_one(void (*insert_func)(void *, void *, void *), byte_buffer *
     return 0;
 
 }
-size_t deseralize_into_structure(void (*insert_func)(void *, void *, void *),void * structure, byte_buffer * buffer, byte_buffer * key_values) {
+size_t deseralize_into_structure_2(void (*insert_func)(void *, void *, void *),void * structure, byte_buffer * buffer, byte_buffer * key_values) {
     size_t ret = 0;
     while(buffer->read_pointer < buffer->curr_bytes && ret != -1 ){
-        ret = deseralize_one(insert_func,buffer, key_values, structure);
+        ret = deseralize_one_2(insert_func,buffer, key_values, structure);
     }
     return 0;
-}
-size_t back_track(byte_buffer * buffer, const char targ, size_t curr_pos, size_t max_len){
-    
-    while(curr_pos >0){
-        const char c = buffer->buffy[curr_pos];
-        if (c == targ && curr_pos < max_len) return curr_pos;
-        curr_pos--;
-    }
-    return curr_pos;
-}
-int get_next_key(byte_buffer * buffer, char * store){
-    char * ret_check = NULL;
-    if ((ret_check = go_nearest_v(buffer, '\"')) == NULL) return -1;
-    char *key_start = NULL, *key_end = NULL;
-    key_start = get_next(buffer);
-    if ((ret_check = go_nearest_v(buffer, '\"')) == NULL)return -1;
-    key_end = get_curr(buffer);
-    size_t key_length = key_end - key_start;
-    memcpy(store, key_start, key_length);
-    store[key_length] = '\0';
-    go_nearest_v(buffer, ':');
-    get_next(buffer);
-    go_nearest_v(buffer, '\"');
-    get_next(buffer);
-    go_nearest_v(buffer, '\"');
-    get_next(buffer);
-
-    return key_length;
 }
 #endif

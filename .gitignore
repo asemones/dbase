@@ -1,0 +1,7 @@
+/src/tests/unity/
+*.txt
+*.bin
+
+/build/
+
+/.vscode/

@@ -118,18 +118,6 @@ meta_data * load_meta_data(char * file, char * bloom_file){
 
     return meta;
 }
-static void dump_filter_list(list * filters, char * file){
-    if (filters == NULL || file == NULL) return;
-    byte_buffer* tempBuffer = create_buffer(10000000);
-    FILE * meta_file = fopen(file, "wb");
-    for (int i = 0; i < filters->len; i++){
-        bloom_filter * temp = (bloom_filter*)get_element(filters,i);
-        if (temp == NULL) continue;
-        copy_filter(temp, tempBuffer);
-    }
-    dump_buffy(tempBuffer, meta_file);
-    free_buffer(tempBuffer);
-}
 static void dump_sst_list(list * sst_files, FILE * f){
     for (int i = 0; i < sst_files->len; i++){
         sst_f_inf * sst = get_element(sst_files,i);

@@ -20,7 +20,7 @@ void test_write_engine(void){
     keyword_entry entry = {"hello", "world"};
 
     write_record(l, &entry,strlen(entry.keyword)+ strlen(entry.value));
-    char * found = read_record(l, "hello", NULL,NULL,NULL);
+    char * found = read_record(l, "hello");
     TEST_ASSERT_EQUAL_STRING("world", found);
     free_engine(l, "meta.bin", "bloom.bin");
     remove("meta.bin");
@@ -46,7 +46,7 @@ void test_write_then_read_engine(void){
         //free(value);
     }
     for(int i = 0; i < size; i++){
-        char * found = read_record(l, entry[i].keyword, NULL,NULL,NULL );
+        char * found = read_record(l, entry[i].keyword);
         TEST_ASSERT_EQUAL_STRING(entry[i].value, found);
     }
     //pretty_print_b_tree(l->table->tree);
@@ -63,20 +63,13 @@ void test_write_then_read_engine(void){
         sprintf(key, "hello%d", i);
         sprintf(value, "world%d", i);
     }
-    dict * read_dict = Dict();
-    byte_buffer * buffer = request_struct(l2->read_pool);
-    byte_buffer * key_values = request_struct(l2->read_pool);
     for(int i = 0; i < size; i++){
         if (strcmp(entry2[i].keyword, "hello99")==0){
             int pl = 0;
         }
-        char * found = read_record(l2, entry2[i].keyword, read_dict, buffer, key_values);
+        char * found = read_record(l2, entry2[i].keyword);
         TEST_ASSERT_EQUAL_STRING(entry2[i].value, found);
-        reset_buffer(buffer);
-        reset_buffer(key_values);
     }
-    return_struct(l2->read_pool, buffer, &reset_buffer);
-    return_struct(l2->read_pool, key_values, &reset_buffer);
     keyword_entry entry3 = {"hellohellohellohellohellohellohellohellohellohellohellohellohellohellohellohellohello", "worldworldworldworldworldworldworldworldworldworldworldworldworldworldworldworldworld"};
     write_record(l2,&entry3,strlen(entry3.keyword)+ strlen(entry3.value));
     free_engine(l2, "meta.bin", "bloom.bin");
@@ -91,5 +84,4 @@ void test_write_then_read_engine(void){
         free(entry2[i].keyword);
         free(entry2[i].value);
     }
-    free_dict_no_element(read_dict);
 }

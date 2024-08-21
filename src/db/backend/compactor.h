@@ -12,7 +12,6 @@
 #include "../../ds/frontier.h"
 #include "../../util/alloc_util.h"
 #include "sst_builder.h"
-#include <ranlib.h>
 #ifndef COMPACTOR_H
 #define COMPACTOR_H
 #define NUM_THREADP 1
@@ -102,9 +101,9 @@ If needed utilize a thread from the threadpool to complete the job
 */
 void free_cm(compact_manager * manager);
 static void integrate_new_tables(compact_manager *cm, compact_job *job, list *indexs) ;
-compact_infos* create_ci(){
+compact_infos* create_ci(size_t page_size){
     compact_infos *ci = (compact_infos*)wrapper_alloc((sizeof(compact_infos)), NULL,NULL);
-    ci->buffer = create_buffer(MB);
+    ci->buffer = create_buffer(page_size);
     ci->complete = false;
     return ci;
 }
@@ -121,7 +120,7 @@ compact_manager * init_cm(meta_data * meta){
     }
     manager->compact_pool = create_pool(NUM_COMPACT*NUM_THREAD*NUM_THREADP);
     for (int i = 0; i < NUM_COMPACT*NUM_THREAD*NUM_THREADP; i++){
-        insert_struct(manager->compact_pool, create_ci());
+        insert_struct(manager->compact_pool, create_ci(4 * KB));
     }
     manager->sst_files = meta->sst_files;
     manager->base_level_size = meta->base_level_size;
@@ -192,7 +191,7 @@ static int handle_same_key(kv *prev, kv *current, compact_infos * preve, compact
     dest_buffer->read_pointer = old_read_ptr;
 
  
-    if (&temp != NULL && strcmp(temp, key.data) == 0) {
+    if (temp != NULL && strcmp(temp, key.data) == 0) {
         size_t bytes_to_remove = strlen(key.data) + strlen(prev_value.data) + 6;  
         dest_buffer->curr_bytes -= bytes_to_remove;
         bytes_changed -= bytes_to_remove;  
@@ -211,16 +210,16 @@ static int handle_same_key(kv *prev, kv *current, compact_infos * preve, compact
 }
 
 
-size_t load_into_ll(ll* l,arena * allocator, void(*func)(void*, void*, void*), byte_buffer * buffer, byte_buffer * key_values){
+size_t load_into_ll(ll* l,arena * allocator, void(*func)(void*, void*, void*), byte_buffer * buffer){
     l->iter = l->head;
     size_t ret_check = 0;
     while(buffer->read_pointer < buffer->max_bytes){
-        ret_check = deseralize_one(func, buffer, key_values,l);
+        ret_check = deseralize_one(func, buffer, l);
         if (ret_check == -1) return 0;
     }
     return 0;
 }
-size_t refill_table(compact_infos * completed_table, ll * list, byte_buffer * storage, size_t next_block_index){
+size_t refill_table(compact_infos * completed_table, ll * list, size_t next_block_index, byte_buffer * use){
     FILE * file = fopen(completed_table->sst_file->file_name,"rb");
     block_index * index = get_element(completed_table->sst_file->block_indexs, next_block_index);
     if (index == NULL) {
@@ -228,18 +227,16 @@ size_t refill_table(compact_infos * completed_table, ll * list, byte_buffer * st
         return 0;
     }
     fseek(file,index->offset, SEEK_SET);
-    reset_buffer(completed_table->buffer);
-    size_t read = fread(completed_table->buffer->buffy, 1, index->len, file);
-    completed_table->buffer->curr_bytes = read;
+    
+    size_t read = fread(use->buffy, 1, index->len, file);
+    use->curr_bytes = read;
     if (read == 0) {
         completed_table->complete = true;
         return 0;
     }
-
-    completed_table->buffer->curr_bytes = read;
     fclose(file);
-    load_into_ll(list, list->a, &push_ll_void, completed_table->buffer, storage);
-    return completed_table->buffer->curr_bytes;
+    load_into_ll(list, list->a, &push_ll_void,use);
+    return use->curr_bytes;
 }
 static int entry_len(kv * entry){
     return strlen(entry->key) +2 + strlen(entry->value) + 2;
@@ -280,9 +277,9 @@ sst_f_inf *create_new_sst_file(compact_job *job, size_t *num_output_table, size_
 
 void merge_tables(compact_infos** compact, byte_buffer *dest_buffer, compact_job * job, arena *a) {
     byte_buffer *storage[10];
+    byte_buffer * use_me[10];
     ll *table_lists[10];
     frontier *pq = Frontier(sizeof(kv), 0);
-    size_t total_bytes = 0;
     size_t prev_index = 0;
     size_t curr_index = 0;
     size_t block_indexs[10] = {0};
@@ -293,7 +290,7 @@ void merge_tables(compact_infos** compact, byte_buffer *dest_buffer, compact_job
     kv  prev;
     prev.key = NULL;
     kv prev_kvs [10];
-    char file_name[128];
+    char file_name[128]; /*1111*/
     size_t num_output_table = 0;
     sprintf(file_name, "in_prog_sst_%zu_%zu", job->id,job->end_level);
     FILE * file = fopen(file_name, "wb");
@@ -305,31 +302,40 @@ void merge_tables(compact_infos** compact, byte_buffer *dest_buffer, compact_job
 
     for (int i = 0; i < num_sst; i++) {
         table_lists[i] = create_ll(a);
-        storage[i] = create_buffer(1000 * KB);
         table_lists[i]->iter = table_lists[i]->head;
+        storage[i] = create_buffer(compact[i]->buffer->max_bytes);
+        use_me[i] = compact[i]->buffer;
     }
 
     for (int i = 0; i < num_sst; i++) {
         ll_node *head = table_lists[i]->head;
-        refill_table(compact[i], table_lists[i], storage[i],block_indexs[i]);
+        refill_table(compact[i], table_lists[i], block_indexs[i], use_me[i]);
         if (head != NULL) {
             enqueue(pq, head->data);
             table_lists[i]->head = table_lists[i]->head->next;
             prev_kvs[i] = *(kv *)head->data;
+         
         }
         memcpy(compact[i]->time_stamp, compact[i]->sst_file->timestamp, strlen(compact[i]->sst_file->timestamp));
         block_indexs[i]++;
     }
     size_t num_bytes = 0;
+    
     while (pq->queue->len > 0) {
         kv *smallest = (kv *)dequeue(pq);
+        //final value can get wiped
+        if (strcmp(smallest->value, "second_value1111") == 0){
+            fprintf(stdout, "no\n");
+        }
         if (strncmp(smallest->value, TOMB_STONE,1) == 0) {
             free(smallest);
             continue;
         }
         for (int i = 0; i < num_sst; i++) {
             if ((table_lists[i]->head== NULL || table_lists[i]->head->data == NULL) && !compact[i]->complete) {
-                size_t bytes = refill_table ( compact[i], table_lists[i], storage[i], block_indexs[i]);
+                use_me[i] = (compact[i]->buffer == use_me[i])? storage[i]:compact[i]->buffer;
+                reset_buffer(use_me[i]);
+                size_t bytes = refill_table ( compact[i], table_lists[i], block_indexs[i], use_me[i]);
                 block_indexs[i]++;
                 if (bytes == 0) continue;
             } 
@@ -339,11 +345,11 @@ void merge_tables(compact_infos** compact, byte_buffer *dest_buffer, compact_job
             enqueue(pq, table_lists[i]->head->data);
             prev_kvs[i] =  *(kv *)table_lists[i]->head->data;
             table_lists[i]->head = table_lists[i]->head->next;
-          
+
 
             break;
         }
-        if (&prev != NULL && prev.key!= NULL && strcmp(smallest->key, prev.key) == 0) {
+        if (prev.key!= NULL && strcmp(smallest->key, prev.key) == 0) {
             int l = handle_same_key(&prev, smallest,compact[prev_index], compact[curr_index],dest_buffer);
             num_bytes += l;
             big_byte_counter += l;
@@ -390,7 +396,6 @@ void merge_tables(compact_infos** compact, byte_buffer *dest_buffer, compact_job
         map_bit(smallest->key,new_sst->filter);
         num_bytes+= new_bytes;
         big_byte_counter += new_bytes;
-        total_bytes += new_bytes;
         prev = *smallest;
        //free(smallest);
         prev_index = curr_index;
@@ -416,7 +421,6 @@ void merge_tables(compact_infos** compact, byte_buffer *dest_buffer, compact_job
         free_ll(table_lists[i], NULL);
         free_buffer(storage[i]);
     }
-
     free_front(pq);
 }
 int calculate_overlap(char *min1, char *max1, char *min2, char *max2) {  
@@ -511,6 +515,7 @@ static void compact_one_table(compact_manager * cm, size_t start_level,  size_t 
         return_struct(cm->compact_pool, compact[i], &reset_ci);
     }
     return_struct(cm->arena_pool, a, &reset_arena);
+    return_struct(cm->big_buffer_pool, dest_buffer, &reset_buffer);
     return;
 }
 
@@ -520,12 +525,6 @@ static void remove_and_rename(sst_f_inf *old, sst_f_inf *new, const char level) 
     rename(new->file_name, old->file_name);
     memcpy(new->file_name, old->file_name, strlen(old->file_name) + 1);
     //free_sst_inf(old);
-}
-
-static void update_bloom_filter(compact_manager *cm, list *job_bloom_filters, size_t index) {
-    bloom_filter *temp = get_element(cm->bloom_filters, index);
-    free_bit(temp->ba);
-    inset_at(cm->bloom_filters, get_element(job_bloom_filters, index), index);
 }
 static void handle_first_element(compact_manager *cm, size_t index,  list * next_level, list * old_level, compact_job* job){
     sst_f_inf *old_first = get_element(old_level, index);

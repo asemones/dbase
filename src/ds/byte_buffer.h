@@ -7,6 +7,7 @@
 #define BYTE_BUFFER_H
 typedef struct byte_buffer {
     char * buffy;
+    void * utility_ptr;
     size_t max_bytes;
     size_t curr_bytes;
     size_t read_pointer;
@@ -18,6 +19,7 @@ byte_buffer * create_buffer(size_t size){
     buffer->max_bytes = size;
     buffer->curr_bytes = 0;
     buffer->read_pointer = 0;
+    buffer->utility_ptr = NULL;
     return buffer;
 }
 
@@ -43,6 +45,14 @@ int dump_buffy(byte_buffer * buffer, FILE * file){
     if (size == buffer->curr_bytes) return 0;
     
     return -1;
+}
+int write_over_buffer(byte_buffer * buffer, char * data, size_t size, size_t *start){
+    if (*start+ size >= buffer->max_bytes){
+        return -1;
+    }
+     memcpy(&buffer->buffy[buffer->curr_bytes], data, size);
+    *start += size;
+     return size;
 }
 char * go_nearest_v(byte_buffer * buffer, char c) {
     char *result = memchr(&buffer->buffy[buffer->read_pointer], c, buffer->curr_bytes - buffer->read_pointer);

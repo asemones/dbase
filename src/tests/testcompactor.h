@@ -95,9 +95,6 @@ void certify_babybase(storage_engine * l) {
     keyword_entry entry;
     char expected_key[30];
     char expected_value[30];
-    dict *read = Dict();
-    byte_buffer *b = create_buffer(10000);
-    byte_buffer *b2 = create_buffer(10000);
     for (int i = 0; i < size; i++) {
         char key[30] = {0};
         char value[30] = {0};
@@ -111,12 +108,9 @@ void certify_babybase(storage_engine * l) {
             sprintf(expected_key, "key%d", i);
             sprintf(expected_value, "value%d", i);
         }
-        char * v = read_record(l, expected_key, read,b,b2 );
+        char * v = read_record(l, expected_key);
         TEST_ASSERT_EQUAL_STRING(expected_value, v);
-        reset_buffer(b);
-        reset_buffer(b2);
     }
-    free_dict_no_element(read);
     printf("Database certification passed successfully.\n");
 }
 
@@ -252,10 +246,10 @@ void test_attempt_to_break_compactor(){
     compact_one_table(cm, 2,3,3,0);
     reset_engine(&l, &cm);
     compact_one_table(cm, 3,4,4,0);
-    TEST_ASSERT_EQUAL_STRING("break break break3001", read_record(l, "i want to break your database3001", Dict(), create_buffer(10000), create_buffer(10000)));
+    TEST_ASSERT_EQUAL_STRING("break break break3001", read_record(l, "i want to break your database3001"));
     compact_one_table(cm, 4,5,7,0);
     compact_one_table(cm, 1,2,7,0);
-    TEST_ASSERT_EQUAL_STRING("second_value0", read_record(l, "common0", Dict(), create_buffer(10000), create_buffer(10000)));
+    TEST_ASSERT_EQUAL_STRING("second_value0", read_record(l, "common0"));
     free_engine(l,"meta.bin","bloom.bin");
 }
 

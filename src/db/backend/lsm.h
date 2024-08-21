@@ -13,6 +13,8 @@
 #include "sst_builder.h"
 #include "../../util/alloc_util.h"
 #include "../../ds/skiplist.h"
+#include "../../ds/cache.h"
+#include "../../ds/associative_array.h"
 
 #ifndef LSM_H
 #define LSM_H
@@ -29,6 +31,7 @@
 #define MAXIUMUM_KEY 0
 #define MINIMUM_KEY 1
 #define KB 1024
+#define TEST_LRU_CAP 1024*40
 
 /*This is the storage engine struct which controls all operations at the disk level. Ideally,
 the user should never be concerned with this struct. The storage engine contains memtables, one active and one immutable. It also has
@@ -47,8 +50,9 @@ typedef struct storage_engine{
     mem_table * table[LOCKED_TABLE_LIST_LENGTH];
     meta_data * meta;
     size_t num_table;
-    struct_pool * read_pool;
     struct_pool * write_pool;
+    cache * cach;
+
 }storage_engine;
 static int flush_table(storage_engine * engine);
 void lock_table(storage_engine * engine);
@@ -84,12 +88,8 @@ storage_engine * create_engine(char * file, char * bloom_file){
     }
     engine->meta = load_meta_data(file, bloom_file);
     engine->num_table = 0;
-    engine->read_pool = create_pool(READER_BUFFS);
     engine->write_pool = create_pool(WRITER_BUFFS);
-    for(int i = 0; i < READER_BUFFS; i++){
-        byte_buffer * buffer = create_buffer(MEMTABLE_SIZE*1.5);
-        insert_struct(engine->read_pool,buffer);
-    }
+    engine->cach= create_cache(TEST_LRU_CAP,4* KB);
     for(int i = 0; i < WRITER_BUFFS; i++){
         byte_buffer * buffer = create_buffer(MEMTABLE_SIZE*1.5);
         insert_struct(engine->write_pool,buffer);
@@ -143,7 +143,7 @@ size_t find_block(sst_f_inf *sst, const char *key) {
 }
 /* this is our read path. This read path */
 
-char * disk_read(storage_engine * engine, const char * keyword, dict * read_dict, byte_buffer * buffer, byte_buffer * key_values){ 
+char * disk_read(storage_engine * engine, const char * keyword){ 
     
     for (int i= 0; i < MAX_LEVELS; i++){
         if (engine->meta->sst_files[i] == NULL || engine->meta->sst_files[i]->len ==0) continue;
@@ -155,26 +155,39 @@ char * disk_read(storage_engine * engine, const char * keyword, dict * read_dict
        // bloom_filter * filter = get_element(engine->meta->filters, sst->filter_index);
         bloom_filter * filter=  sst->filter;
         if (!check_bit(keyword,filter)) continue;
-
-        FILE * sst_file = fopen(sst->file_name,"rb");
+        
         size_t index_block= find_block(sst, keyword);
         block_index * index = get_element(sst->block_indexs, index_block);
+       
 
         if (!check_bit(keyword, index->filter)) continue;
-        else fseek(sst_file, index->offset, SEEK_SET);
-        int read = fread(buffer->buffy, 1, index->len, sst_file);
-        buffer->curr_bytes = read;
-        deseralize_into_structure(&add_kv_void,read_dict, buffer,key_values);
-        fclose(sst_file);
-        char * value = (char *)get_v(read_dict, keyword);
-        if (value != NULL) return value;      
+        ll_node * page = get_page(engine->cach, index->min_key);
+        cache_entry * c = NULL;
+        if (page){
+            c = page->data;
+        }
+        else {
+            FILE * sst_file = fopen(sst->file_name,"rb");
+            fseek(sst_file, index->offset, SEEK_SET);
+            ll_node * fresh_page = add_page(engine->cach, sst_file, index->min_key, index->len);
+            c = fresh_page->data;
+            deseralize_into_structure(&into_array,c->ar, c->buf);
+            fclose(sst_file);
+        }
+        /*TODO: make deseralize_into work inplace. deseralizaed values are shorter so its fine*/
+
+        int k_v_array_index = json_b_search(&c->ar->keys, keyword);
+        if (k_v_array_index== -1) continue;
+
+        return  c->ar->values[k_v_array_index];    
     }
     return NULL;
 }
-char* read_record(storage_engine * engine, const char * keyword, dict * read_dict, byte_buffer * buffer, byte_buffer * key_values){
-    keyword_entry * entry = search_list(engine->table[CURRENT_TABLE]->skip, keyword);
-    if (entry == NULL) return disk_read(engine, keyword,read_dict, buffer, key_values);
+char* read_record(storage_engine * engine, const char * keyword){
+    Node * entry= search_list(engine->table[CURRENT_TABLE]->skip, keyword);
+    if (entry== NULL) return disk_read(engine, keyword);
     return entry->value;
+    
 }
 int delete_record(storage_engine * engine, const char * keyword, keyword_entry * alloc_entry , dict * read_dict){
     keyword_entry * entry = search_list(engine->table[CURRENT_TABLE]->skip,(char*)keyword);
@@ -287,8 +300,8 @@ void free_engine(storage_engine * engine, char* meta_file,  char * bloom_file){
     destroy_meta_data(meta_file, bloom_file,engine->meta);  
     engine->meta = NULL;
     free_tables(engine);
-    free_pool(engine->read_pool, &free_buffer);
     free_pool(engine->write_pool, &free_buffer);
+    free_cache(engine->cach);
     free(engine);
     engine = NULL;
 }

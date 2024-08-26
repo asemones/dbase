@@ -6,6 +6,7 @@
 #include "../../util/maths.h"
 #include "../../util/alloc_util.h"
 #include "indexer.h"
+#include "option.h"
 #pragma once    
 struct write_info{
     byte_buffer * table_store;
@@ -47,7 +48,7 @@ void build_index(sst_f_inf * sst, size_t block_offsets, size_t num_tables, struc
    
     block_index * index = (block_index*)get_element(sst->block_indexs, num_tables);
     if (index == NULL){
-        size_t multipler = info.table_s/(4 * 1024);
+        size_t multipler = info.table_s/(GLOB_OPTS.BLOCK_INDEX_SIZE);
         index = create_block_index(9 *multipler);
         index->offset = block_offsets;
         index->min_key = (char*)arena_alloc(sst->mem_store, 40);
@@ -74,7 +75,6 @@ int build_and_write_all_tables(struct write_info info, sst_f_inf * sst){
     info.table_store->read_pointer = 0;
     get_next_key(info.table_store,sst->min);
     info.table_store->read_pointer = 0;
-    int l = 0;
     //better locating the offset of the blocks as they are consistently misaligned
     while (iter < info.table_store->curr_bytes){
         block_offsets =tot;
@@ -120,7 +120,7 @@ void free_sst_inf(void * ss){
     free_arena(sst->mem_store);
     sst->block_indexs = NULL;
     sst->mem_store = NULL;
-    free_bit(sst->filter);
+    free_bit(sst->filter->ba);
     sst->filter = NULL;
 
     //free(sst);

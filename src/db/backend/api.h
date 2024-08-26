@@ -6,9 +6,7 @@
 
 /*change read_record and write_record to work properly*/
 char * get(storage_engine * engine, char * key){
-    byte_buffer* buf = (byte_buffer*)request_struct(engine->read_pool);
-    byte_buffer * key_v_store = (byte_buffer*)request_struct(engine->read_pool);
-    return read_record(engine, key, buf, key_v_store);
+    return read_record(engine, key);
 }
 int set(storage_engine * engine, char * key, char * value){
     keyword_entry entry = {key, value};

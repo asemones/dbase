@@ -59,7 +59,7 @@ string stack_str(const char *data) {
         return s;
     }
     s.length = strlen(data);
-    s.data = data;
+    s.data = (char*)data;
     return s;
 }
 int string_cmp(string s1, string s2) {
@@ -138,7 +138,7 @@ void grab_time_char(const char * buffer){
     time_t rawtime;
     time(&rawtime);
     struct tm *timeinfo = localtime(&rawtime);
-    strftime(buffer, 20,"%Y-%m-%d %H:%M:%S", timeinfo);
+    strftime((char*)buffer, 20,"%Y-%m-%d %H:%M:%S", timeinfo);
 }
 void grab_time(byte_buffer * buf){
     time_t rawtime;
@@ -150,6 +150,11 @@ void grab_time(byte_buffer * buf){
     write_buffer(buf, buff, strlen(buff));
     write_buffer(buf, ",",1);
     
+}
+bool C_strn_between(const char * s, const char * max, const char * min){
+    int max_ccmp_char = strlen(s);
+
+    return strncmp(s, min,max_ccmp_char) >=0 && strncmp(s,max, max_ccmp_char) <=0;
 }
 
 

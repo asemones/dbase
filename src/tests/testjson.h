@@ -28,7 +28,6 @@ void test_deserialize_dict(void) {
     char json[] = "{\"key\":\"value\",\"no\":\"value2\"}";
     byte_buffer * buffer = create_buffer(1024);
     dict *d = Dict();
-    size_t buffer_size = sizeof(json);
     write_buffer(buffer, json, strlen(json));
 
     deseralize_into_structure(&add_kv_void, d,buffer);
@@ -51,7 +50,6 @@ void test_write_read_json(void){
     write_file(buffer->buffy, "test.bin", "wb", 1, buffer->curr_bytes);
 
     byte_buffer* buffer2 = create_buffer(1024);
-    byte_buffer* dictBuffer = create_buffer(1024);
     int l= read_file(buffer2->buffy,"test.bin","rb", 1, buffer->curr_bytes);
     fprintf(stderr, "read %d bytes\n", l);
     deseralize_into_structure(&add_kv_void, d,buffer2);

@@ -116,8 +116,8 @@ thread_p *thread_Pool(int num_threads, size_t dts){
     p->num_threads =0;
     p->num_alive = 0;
     p->killSig = false;
-    p->work_pq = Frontier(sizeof(kv*),true);
-    p->out_pq = Frontier(sizeof(kv*),true );
+    p->work_pq = Frontier(sizeof(kv),true, &compare_kv_v);
+    p->out_pq = Frontier(sizeof(kv),true , &compare_kv_v);
     pthread_cond_init(&(p->freeze), NULL);
 	pthread_mutex_init(&(p->counter_lock), NULL);
     pthread_mutex_init(&(p->out_lock), NULL);
@@ -135,11 +135,12 @@ void add_work(thread_p *p,  void (*functions)(void*, void ** , thread* p), void*
     worked->arg=  args;
     worked->reV = retV;
     pthread_mutex_lock(&(p->queue_lock));
-    kv * temp = (kv*)wrapper_alloc((sizeof(kv)), NULL,NULL);
-    temp->key = priority;
-    temp->value= worked;
-    enqueue(p->work_pq,temp);
-    free(temp);
+    //kv * temp = (kv*)wrapper_alloc((sizeof(kv)), NULL,NULL);
+    kv temp;
+    temp.key = priority;
+    temp.value= worked;
+    enqueue(p->work_pq,&temp);
+    //.free(temp);
     pthread_cond_broadcast(&(p->queue_cond));
     pthread_mutex_unlock(&(p->queue_lock));
 
@@ -167,11 +168,12 @@ void execute(thread *p) {
             break;
         }
 
-        kv *work_item = dequeue(p->thrpool->work_pq);
+        kv work_item;
+        dequeue(p->thrpool->work_pq, &work_item);
         pthread_mutex_unlock(&(p->thrpool->queue_lock));
 
         p->thrpool->num_alive++;
-        get_result(p, work_item);
+        get_result(p, &work_item);
 
         pthread_mutex_lock(&(p->thrpool->counter_lock));
         p->thrpool->num_alive--;
@@ -196,7 +198,7 @@ void get_result(thread * p ,kv *work_item){
     ((work*)work_item->value)->function(((work*)work_item->value)->arg,((work*)work_item->value)->reV, p);
      pthread_mutex_lock(&(p->thrpool->out_lock));
      enqueue(p->thrpool->out_pq, work_item);
-     free(work_item);
+     //free(work_item);
      pthread_mutex_unlock(&((p->thrpool->out_lock)));
     return;
 }
@@ -252,7 +254,6 @@ void free_work_elements(kv* temp, void(*function)(void* arg, void *arg2), void *
         free(temp2->reV);
     }
     free (temp2);
-    free(temp);
     return;
 }
 

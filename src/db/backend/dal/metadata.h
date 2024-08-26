@@ -18,7 +18,6 @@
 #define NUM_WORD 2000
 #define MIN_KEY_SIZE 10
 #define TIME_STAMP_SIZE 20
-#define MAX_F_N_SIZE 16
 #define MAX_LEVELS 7
 #define BASE_LEVEL_SIZE 6400000
 #define MIN_COMPACT_RATIO 50
@@ -51,7 +50,7 @@ static void read_sst_list(list * sst_files, byte_buffer * tempBuffer, size_t num
         read_buffer(tempBuffer, &block_ind_len, sizeof(size_t));
         sst->block_indexs = thread_safe_list(block_ind_len,sizeof(block_index),false);
         sst->block_indexs->len = block_ind_len;
-        sst->mem_store= calloc_arena(4096);
+        sst->mem_store= calloc_arena(GLOB_OPTS.BLOCK_INDEX_SIZE);
         
     }
     byte_buffer * small_buff = create_buffer(30 * 1024);

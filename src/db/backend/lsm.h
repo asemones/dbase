@@ -15,6 +15,7 @@
 #include "../../ds/skiplist.h"
 #include "../../ds/cache.h"
 #include "../../ds/associative_array.h"
+#include "option.h"
 
 #ifndef LSM_H
 #define LSM_H
@@ -32,6 +33,8 @@
 #define MINIMUM_KEY 1
 #define KB 1024
 #define TEST_LRU_CAP 1024*40
+
+option GLOB_OPTS;
 
 /*This is the storage engine struct which controls all operations at the disk level. Ideally,
 the user should never be concerned with this struct. The storage engine contains memtables, one active and one immutable. It also has
@@ -52,7 +55,6 @@ typedef struct storage_engine{
     size_t num_table;
     struct_pool * write_pool;
     cache * cach;
-
 }storage_engine;
 static int flush_table(storage_engine * engine);
 void lock_table(storage_engine * engine);
@@ -86,10 +88,11 @@ storage_engine * create_engine(char * file, char * bloom_file){
     for (int i = 0; i < LOCKED_TABLE_LIST_LENGTH; i++){
         engine->table[i] = create_table();
     }
+    set_debug_defaults(&GLOB_OPTS);
     engine->meta = load_meta_data(file, bloom_file);
     engine->num_table = 0;
     engine->write_pool = create_pool(WRITER_BUFFS);
-    engine->cach= create_cache(TEST_LRU_CAP,4* KB);
+    engine->cach= create_cache(GLOB_OPTS.LRU_CACHE_SIZE, GLOB_OPTS.BLOCK_INDEX_SIZE);
     for(int i = 0; i < WRITER_BUFFS; i++){
         byte_buffer * buffer = create_buffer(MEMTABLE_SIZE*1.5);
         insert_struct(engine->write_pool,buffer);
@@ -132,14 +135,27 @@ size_t find_sst_file(list  *sst_files, size_t num_files, const char *key) {
     return 0;
 }
 size_t find_block(sst_f_inf *sst, const char *key) {
-   for (int i = 0 ; i < sst->block_indexs->len; i++){
+    int left = 0;
+    int right = sst->block_indexs->len - 1;
+    int mid = 0;
+    while (left <= right) {
+        mid = left + (right - left) / 2;
+        block_index *index = get_element(sst->block_indexs, mid);
+        block_index *next_index = get_element(sst->block_indexs, mid + 1);
 
-       block_index * index = get_element(sst->block_indexs, i);
-       block_index * next_index = get_element(sst->block_indexs, i+1);
-       if (next_index == NULL) return i;
-       else if (strcmp(key, index->min_key) >= 0 && strcmp(key, next_index->min_key) < 0) return i;
-   }
-    return sst->block_indexs->len - 1;
+        if (next_index == NULL || (strcmp(key, index->min_key) >= 0 && strcmp(key, next_index->min_key) < 0)) {
+            return mid;
+        }
+
+        if (strcmp(key, index->min_key) < 0) {
+            right = mid - 1;
+        } 
+        else {
+            left = mid + 1;
+        }
+    }
+
+    return mid;
 }
 /* this is our read path. This read path */
 
@@ -159,24 +175,8 @@ char * disk_read(storage_engine * engine, const char * keyword){
         size_t index_block= find_block(sst, keyword);
         block_index * index = get_element(sst->block_indexs, index_block);
        
-
-        if (!check_bit(keyword, index->filter)) continue;
-        ll_node * page = get_page(engine->cach, index->min_key);
-        cache_entry * c = NULL;
-        if (page){
-            c = page->data;
-        }
-        else {
-            FILE * sst_file = fopen(sst->file_name,"rb");
-            fseek(sst_file, index->offset, SEEK_SET);
-            ll_node * fresh_page = add_page(engine->cach, sst_file, index->min_key, index->len);
-            c = fresh_page->data;
-            deseralize_into_structure(&into_array,c->ar, c->buf);
-            fclose(sst_file);
-        }
-        /*TODO: make deseralize_into work inplace. deseralizaed values are shorter so its fine*/
-
-        int k_v_array_index = json_b_search(&c->ar->keys, keyword);
+        cache_entry * c = retrieve_entry(engine->cach, index, sst->file_name);
+        int k_v_array_index = json_b_search(c->ar, keyword);
         if (k_v_array_index== -1) continue;
 
         return  c->ar->values[k_v_array_index];    
@@ -255,7 +255,7 @@ static int flush_table(storage_engine * engine){
     w_info.file = sst->file_name;
     w_info.staging = staging;
     w_info.table_store = buffer;
-    w_info.table_s = 4*KB;
+    w_info.table_s = GLOB_OPTS.BLOCK_INDEX_SIZE;
 
     build_and_write_all_tables(w_info, sst);
     

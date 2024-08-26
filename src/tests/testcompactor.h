@@ -7,89 +7,8 @@
 #include "unity/src/unity.h"
 #include "../ds/arena.h"
 #include "../util/alloc_util.h"
+#include "test_util_funcs.h"
 #pragma once
-
-
-void clean_test_files(void){
-    remove("db.bin");
-    remove("meta.bin");
-    remove("bloom.bin");
-    remove ("sst_0_0");
-    remove ("sst_1_0");
-    remove ("sst_2_0");
-    remove ("sst_3_0");
-    remove ("sst_4_0");
-    remove ("sst_0_1");
-    remove ("sst_1_1");
-    remove ("sst_2_1");
-    remove ("sst_3_1");
-    remove ("sst_4_1");
-    remove ("in_prog_sst_3_0");
-    remove ("in_prog_sst_4_0");
-    remove ("in_prog_sst_5_0");
-    remove ("in_prog_sst_6_0");
-}
-void create_a_babybase(void) {
-    char* meta_file = "meta.bin";
-    char* bloom_file = "bloom.bin";
-    storage_engine *l = create_engine(meta_file, bloom_file);
-    const int size = 6000;
-    keyword_entry entry[size];
-    for (int i = 0; i < size; i++) {
-        char *key = (char*)wrapper_alloc(30, NULL, NULL);
-        char *value = (char*)wrapper_alloc(30, NULL, NULL);
-        entry[i].keyword = key;
-        entry[i].value = value;
-
-        if (i % 3 == 0) {
-            sprintf(key, "common%d", i / 3); 
-            sprintf(value, "first_value%d", i / 3);
-        } else {
-            sprintf(key, "hello%d", i);
-            sprintf(value, "world%d", i);
-        }
-
-        write_record(l, &entry[i], strlen(entry[i].keyword) + strlen(entry[i].value));
-    }
-
-    lock_table(l);
-    flush_table(l);
-
-   
-    for (int i = 0; i < size; i++) {
-        free(entry[i].keyword);
-        free(entry[i].value);
-    }
-
-    usleep(1000000);
-    for (int i = 0; i < size; i++) {
-        char *key = (char*)wrapper_alloc(30, NULL, NULL);
-        char *value = (char*)wrapper_alloc(30, NULL, NULL);
-        entry[i].keyword = key;
-        entry[i].value = value;
-
-        if (i % 3 == 0) {
-            sprintf(key, "common%d", i / 3); 
-            sprintf(value, "second_value%d", i / 3);  
-        } else {
-            sprintf(key, "key%d", i);
-            sprintf(value, "value%d", i);
-        }
-
-        write_record(l, &entry[i], strlen(entry[i].keyword) + strlen(entry[i].value));
-    }
-
-    lock_table(l);
-    flush_table(l);
-
-    // Free allocated memory for the second table
-    for (int i = 0; i < size; i++) {
-        free(entry[i].keyword);
-        free(entry[i].value);
-    }
-
-    free_engine(l, meta_file, bloom_file);
-}
 void certify_babybase(storage_engine * l) {
     const int size = 6000;
     keyword_entry entry;
@@ -247,8 +166,8 @@ void test_attempt_to_break_compactor(){
     reset_engine(&l, &cm);
     compact_one_table(cm, 3,4,4,0);
     TEST_ASSERT_EQUAL_STRING("break break break3001", read_record(l, "i want to break your database3001"));
-    compact_one_table(cm, 4,5,7,0);
-    compact_one_table(cm, 1,2,7,0);
+    compact_one_table(cm, 4,5,6,0);
+    compact_one_table(cm, 1,2,6,0);
     TEST_ASSERT_EQUAL_STRING("second_value0", read_record(l, "common0"));
     free_engine(l,"meta.bin","bloom.bin");
 }

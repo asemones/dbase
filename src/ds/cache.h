@@ -151,6 +151,22 @@ ll_node * add_page(cache * c, FILE * f, char * min_key, size_t size) {
 ll_node* get_page(cache * c,char * min_key){
     return (ll_node*)get_v(c->map, min_key);
 }
+cache_entry *retrieve_entry(cache * cach, block_index * index, char * file_name){
+    ll_node * page = get_page(cach, index->min_key);
+        cache_entry * c;
+        if (page){
+            c = page->data;
+        }
+        else {
+            FILE * sst_file = fopen(file_name,"rb");
+            fseek(sst_file, index->offset, SEEK_SET);
+            ll_node * fresh_page = add_page(cach, sst_file, index->min_key, index->len);
+            c = fresh_page->data;
+            deseralize_into_structure(&into_array,c->ar, c->buf);
+            fclose(sst_file);
+        }
+        return c;
+}
 void free_cache(cache * c){
     free_ll(c->queue, NULL);
     free_arena(c->mem);

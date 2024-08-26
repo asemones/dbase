@@ -13,6 +13,7 @@
 #include "testlsm.h"
 #include "testcompactor.h"
 #include "testlru.h"
+#include "test_iter.h"
 
 
 
@@ -95,7 +96,18 @@ int main(void) {
     RUN_TEST(test_cache_init);
     RUN_TEST(test_cache_add_and_get);
     RUN_TEST(test_cache_evict);
-    
-
+    /*
+    fprintf(stderr, "RUNNING THREADPOOL TESTS:\n");
+    RUN_TEST(test_threadPool_initialization);
+    RUN_TEST(test_addWork_to_threadPool);
+    RUN_TEST(test_execute_work_in_threadPool);
+    RUN_TEST(test_destroy_threadPool);
+    */
+    fprintf(stderr,"RUNNING ITER TESTS\n");
+    RUN_TEST(test_init_iters);
+    RUN_TEST(test_seek);
+    RUN_TEST(test_next);
+    RUN_TEST(test_run_scan);
+    RUN_TEST(test_full_table_scan_messy);
     return UNITY_END();
 }

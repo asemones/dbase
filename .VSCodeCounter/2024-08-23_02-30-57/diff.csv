@@ -1,0 +1,12 @@
+"filename", "language", "C++", "C", "comment", "blank", "total"
+"/home/asemones/Documents/personal_code/dbase/src/db/backend/compactor.h", "C++", -1, 0, 0, 0, -1
+"/home/asemones/Documents/personal_code/dbase/src/db/backend/iter.h", "C++", 7, 0, 0, 1, 8
+"/home/asemones/Documents/personal_code/dbase/src/db/backend/json.h", "C++", 1, 0, 0, 0, 1
+"/home/asemones/Documents/personal_code/dbase/src/ds/frontier.h", "C++", -14, 0, 2, -2, -14
+"/home/asemones/Documents/personal_code/dbase/src/ds/hashtbl.h", "C++", 11, 0, 0, 0, 11
+"/home/asemones/Documents/personal_code/dbase/src/ds/threadpool.h", "C++", -2, 0, 3, 0, 1
+"/home/asemones/Documents/personal_code/dbase/src/tests/testfrontier.h", "C++", -1, 0, 0, 2, 1
+"/home/asemones/Documents/personal_code/dbase/src/tests/testrunner.c", "C", 0, 5, 0, 0, 5
+"/home/asemones/Documents/personal_code/dbase/src/tests/testthreadp.h", "C++", 0, 0, 0, -1, -1
+"/home/asemones/Documents/personal_code/dbase/src/tests/threadpool.h", "C++", -183, 0, -50, -28, -261
+"Total", "-", -182, 5, -45, -28, -250

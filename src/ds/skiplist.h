@@ -70,7 +70,7 @@ void insert_list(SkipList* list, void* key, void* value) {
     }
 }
 
-Node* search_list(SkipList* list, void* key) {
+Node* search_list(SkipList* list, const void* key) {
     Node* x = list->header;
     for (int i = list->level - 1; i >= 0; i--) {
         while (x->forward[i] && list->compare(x->forward[i]->key, key) < 0) {
@@ -80,9 +80,24 @@ Node* search_list(SkipList* list, void* key) {
     x = x->forward[0];
     if (x && list->compare(x->key, key) == 0) {
         return x;
-    } else {
+    } 
+    else {
         return NULL;
     }
+}
+Node* search_list_prefix(SkipList* list, void* key) {
+    Node* x = list->header;
+    for (int i = list->level - 1; i >= 0; i--) {
+        while (x->forward[i] && list->compare(x->forward[i]->key, key) < 0) {
+            x = x->forward[i];
+        }
+    }
+    x = x->forward[0];
+    if (x){
+        return x;
+    }
+    else return NULL;
+
 }
 
 void delete_element(SkipList* list, void* key) {

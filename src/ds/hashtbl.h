@@ -166,7 +166,7 @@ void* get_v(dict *table, const void *key) {
     }
 }
 int compare_kv(kv *k1, kv *k2){
-    if (k1 == NULL || k2 == NULL){
+    if (k1 == NULL || k2 == NULL || k1->key == NULL || k2->key == NULL){
         return -1;
     }
     if (strcmp((char*)k1->key, (char*)k2->key) == 0 && strcmp((char*)k1->value, (char*)k2->value) == 0){
@@ -230,5 +230,14 @@ void free_kv(kv *k){
          free(k->key);
     }
     free(k);
+}
+int compare_kv_v(const void * kv1, const void * kv2){
+    const kv * k1 = kv1;
+    const kv * k2 = kv2;
+    if (k1 == NULL || k2 == NULL){
+        return -1;
+    }
+    
+    return strcmp(k1->key, k2->key);
 }
 #endif

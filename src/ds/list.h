@@ -298,6 +298,9 @@ void shift_list(list * my_list){
         memmove((char *)my_list->arr + i * my_list->dtS, (char *)my_list->arr + (i + 1) * my_list->dtS, my_list->dtS);
     }
 }
+void * get_last(list * my_list){
+    return get_element(my_list, my_list->len -1);
+}
 
 
 #endif

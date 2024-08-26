@@ -5,7 +5,7 @@
 #pragma once
 
 void test_enqueue(void) {
-    frontier *front = Frontier(sizeof(kv*), true);
+    frontier *front = Frontier(sizeof(kv), true,  &compare_kv_v);
     for (int i = 1 ; i < 4; i++){
         int *p = wrapper_alloc((sizeof(int)), NULL,NULL);
         int *q = wrapper_alloc((sizeof(int)), NULL,NULL);
@@ -24,8 +24,8 @@ void test_enqueue(void) {
 
 void test_dequeue(void) {
   
-  frontier *front = Frontier(sizeof(kv*),true);
-  TEST_ASSERT_NULL(dequeue(front));
+  frontier *front = Frontier(sizeof(kv),true, &compare_kv_v);
+  
   for (int i = 1 ; i < 4; i++){
         int *p = wrapper_alloc((sizeof(int)), NULL,NULL);
         int *q = wrapper_alloc((sizeof(int)), NULL,NULL);
@@ -35,9 +35,10 @@ void test_dequeue(void) {
         enqueue(front,temp);
     }
 
-    kv *dequeuedElement = dequeue(front);
-    TEST_ASSERT_EQUAL_INT(10, *(int *)dequeuedElement->key); 
-    free(dequeuedElement);
+    kv dequeuedElement;
+    dequeue(front, &dequeuedElement);
+    TEST_ASSERT_EQUAL_INT(10, *(int *)dequeuedElement.key); 
+
 
     kv *peekedElement = peek(front);
     TEST_ASSERT_EQUAL_INT(20, *(int *)peekedElement->key); 
@@ -48,7 +49,7 @@ void test_dequeue(void) {
 }
 
 void test_peek(void) {
-    frontier *front = Frontier(sizeof(kv*),true);
+    frontier *front = Frontier(sizeof(kv),true,&compare_kv_v);
     for (int i = 1 ; i < 4; i++){
         int *p = wrapper_alloc((sizeof(int)), NULL,NULL);
         int *q = wrapper_alloc((sizeof(int)), NULL,NULL);
@@ -67,7 +68,7 @@ void test_peek(void) {
 }
 
 void test_freeFront(void) {
-    frontier *front = Frontier(sizeof(kv*),false);
+    frontier *front = Frontier(sizeof(kv),false,  &compare_kv_v);
     int one =3, two =4;
     kv element1 = KV(&one, &two);
 

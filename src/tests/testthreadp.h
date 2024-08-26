@@ -48,16 +48,15 @@ void test_execute_work_in_threadPool(void) {
     sleep(1);
     TEST_ASSERT_EQUAL_INT(0, pool->work_pq->queue->len);
     TEST_ASSERT_EQUAL_INT(1, pool->out_pq->queue->len);
-
-    kv *resultItem = dequeue(pool->out_pq);
-    work *resultWork = (work *)resultItem->value;
+    kv resultItem;
+    dequeue(pool->out_pq, &resultItem);
+    work *resultWork = (work *)resultItem.value;
     int **result = (int **)resultWork->reV;
 
     TEST_ASSERT_EQUAL_INT(10, **result); 
     destroy_pool(pool);
     free(result);
     free(resultWork);
-    free(resultItem);
 }
 
 void test_destroy_threadPool(void) {

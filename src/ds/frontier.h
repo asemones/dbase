@@ -1,23 +1,22 @@
-#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include "hashtbl.h"
-#include "list.h"
-#include "../util/alloc_util.h"
-#ifndef FRONTIER_H
-#define FRONTIER_H
+#include <stdbool.h>
+#pragma once
 
-typedef struct frontiers{
-   list * queue;
-}frontier;
+typedef struct frontier{
+    list* queue;
+    int (*compare)(const void*, const void*); // Comparison function pointer
+} frontier;
 
 /**
- * @brief Creates a new frontier prority queue structure.
+ * @brief Creates a new frontier priority queue structure.
  *
  * @param dts Size of the elements being added
  * @param is_alloc Boolean indicating if allocation is needed.
+ * @param compare Function pointer for comparing two elements.
  * @return Pointer to the newly created frontier.
  */
-frontier* Frontier(size_t dts, bool is_alloc);
+frontier* Frontier(size_t dts, bool is_alloc, int (*compare)(const void*, const void*));
 
 /**
  * @brief Ensures the heap property is maintained at the specified index.
@@ -33,15 +32,16 @@ void heapify(frontier *front, int index);
  * @param front Pointer to the frontier.
  * @param element Pointer to the element to be added to the frontier.
  */
-void enqueue(frontier *front, kv* element);
+void enqueue(frontier *front, void* element);
 
 /**
  * @brief Removes and returns the element with the highest priority from the frontier (dequeue operation).
+ * The returned element is copied to the provided buffer.
  *
  * @param front Pointer to the frontier.
- * @return Pointer to the element with the highest priority.
+ * @param out_buffer Buffer where the removed element will be copied.
  */
-kv* dequeue(frontier * front);
+void dequeue(frontier * front, void* out_buffer);
 
 /**
  * @brief Returns the element with the highest priority without removing it from the frontier.
@@ -49,7 +49,7 @@ kv* dequeue(frontier * front);
  * @param front Pointer to the frontier.
  * @return Pointer to the element with the highest priority.
  */
-kv* peek(frontier * front);
+void* peek(frontier * front);
 
 /**
  * @brief Frees all resources associated with the frontier.
@@ -58,22 +58,24 @@ kv* peek(frontier * front);
  */
 void free_front(frontier * front);
 
+// Implementation of the functions
 
-//key-value pairs with the key being priority
-frontier * Frontier(size_t dts, bool is_alloc){
-    frontier *front = (frontier*)wrapper_alloc((sizeof(frontier)), NULL,NULL);
-    front->queue = List(16,sizeof(kv), true);
+frontier* Frontier(size_t dts, bool is_alloc, int (*compare)(const void*, const void*)) {
+    frontier *front = (frontier*)wrapper_alloc((sizeof(frontier)), NULL, NULL);
+    front->queue = List(16, dts, true);
     front->queue->isAlloc = is_alloc;
+    front->compare = compare;
     return front;
 }
-void enqueue(frontier *front, kv* element) {
-    if (front == NULL || element == NULL || element->key == NULL) {
+
+void enqueue(frontier *front, void* element) {
+    if (front == NULL || element == NULL) {
         return;
     }
     insert(front->queue, element);
     int i = front->queue->len - 1;
-    while (i != 0 && strcmp((char*)((kv*)get_element(front->queue, (i - 1) / 2))->key, (char*)((kv*)get_element(front->queue, i))->key) >= 0) {
-        swap((kv*)get_element(front->queue, (i - 1) / 2), (kv*)get_element(front->queue, i), front->queue->dtS);
+    while (i != 0 && front->compare(get_element(front->queue, (i - 1) / 2), get_element(front->queue, i)) >= 0) {
+        swap(get_element(front->queue, (i - 1) / 2), get_element(front->queue, i), front->queue->dtS);
         i = (i - 1) / 2;
     }
 }
@@ -85,55 +87,55 @@ void heapify(frontier *front, int index) {
     int right = 2 * index + 2;
 
     if (left < size) {
-        kv *left_element = (kv *)get_element(front->queue, left);
-        kv *current_element = (kv *)get_element(front->queue, largest);
-        if (strcmp((char *)left_element->key, (char *)current_element->key) <= 0) {
+        void * left_element = get_element(front->queue,left );
+        void * curr_element = get_element(front->queue, largest);
+        if (front->compare(left_element, curr_element) <= 0){
             largest = left;
         }
+        
     }
-
-    if (right < size) {
-        kv *right_element = (kv *)get_element(front->queue, right);
-        kv *current_element = (kv *)get_element(front->queue, largest);
-        if (strcmp((char *)right_element->key, (char *)current_element->key) <= 0) {
+    if (right < size){
+        void * right_element = get_element(front->queue ,right );
+        void * curr_element = get_element(front->queue, largest);
+        if (front->compare(right_element, curr_element) <= 0){
             largest = right;
         }
     }
-
     if (largest != index) {
-        kv *index_element = (kv *)get_element(front->queue, index);
-        kv *largest_element = (kv *)get_element(front->queue, largest);
-        swap(index_element, largest_element, front->queue->dtS);
-
+        swap(get_element(front->queue, index), get_element(front->queue, largest), front->queue->dtS);
         heapify(front, largest);
     }
 }
 
-kv* dequeue(frontier * front){
+void dequeue(frontier* front, void* out_buffer) {
     if (front->queue->len == 0) {
-        return NULL;
+        return; // or handle the empty queue case appropriately
     }
 
-    kv* root = (kv*)wrapper_alloc((sizeof(kv)), NULL,NULL);
-    *root = *(kv*)get_element(front->queue, 0);
+    void* root = get_element(front->queue, 0);
+    kv * l = root;
+    int* m = l->key;
+    memcpy(out_buffer, root, front->queue->dtS);
 
-    kv* first_element = (kv*)get_element(front->queue, 0);
-    kv* last_element = (kv*)get_element(front->queue, front->queue->len - 1);
+    void* last_element = get_element(front->queue, front->queue->len - 1);
+    kv * p= last_element;
+    int * q= p->key;
+    swap(root, last_element, front->queue->dtS);
 
-    swap(first_element, last_element, front->queue->dtS);
     front->queue->len--;
     heapify(front, 0);
-
-    return root; 
-
 }
-kv * peek(frontier * front){
-    return  (kv*)get_element(front->queue, 0);
+
+void* peek(frontier * front) {
+    return get_element(front->queue, 0);
 }
-void free_front(frontier * front){
+void debug_print(frontier * front){
+    for (int i =0; i < front->queue->len; i++){
+     kv* l =(kv*) get_element(front->queue,i);
+     fprintf(stdout, "%s, %s\n",(char*)l->key, (char*)l->value);
+    }
+}
+void free_front(frontier * front) {
     free_list(front->queue, NULL);
     free(front);
 }
-#endif
-
-

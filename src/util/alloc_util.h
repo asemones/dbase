@@ -12,7 +12,6 @@ void * wrapper_alloc (size_t size, void * alloc_struct, void*(*alloc_func)(void*
     else return malloc(size);
 }
 void * wrapper_realloc (void * ptr, size_t size, void * alloc_struct, void*(*alloc_func)(void*, size_t)){
-    void * ret =0;
     if (alloc_struct != NULL && alloc_func !=NULL){
         return alloc_func(alloc_struct,size);
     } 

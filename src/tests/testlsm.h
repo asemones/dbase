@@ -64,9 +64,6 @@ void test_write_then_read_engine(void){
         sprintf(value, "world%d", i);
     }
     for(int i = 0; i < size; i++){
-        if (strcmp(entry2[i].keyword, "hello99")==0){
-            int pl = 0;
-        }
         char * found = read_record(l2, entry2[i].keyword);
         TEST_ASSERT_EQUAL_STRING(entry2[i].value, found);
     }

@@ -8,7 +8,7 @@
 
 #define NUM_HASH_BLOK 10
 #define NUM_HASH_SST 10
-#define MIN_KEY_SIZE 100
+#define MAX_KEY_SIZE 100
 #define TIME_STAMP_SIZE 20
 #define MAX_F_N_SIZE 32
 #define MAX_LEVELS 7
@@ -46,8 +46,8 @@ typedef struct sst_file_info{
     //size_t id;
     size_t length;
     list * block_indexs; //type:  block_index
-    char max[MIN_KEY_SIZE];
-    char min[MIN_KEY_SIZE];
+    char max[MAX_KEY_SIZE];
+    char min[MAX_KEY_SIZE];
     char timestamp[TIME_STAMP_SIZE];
     size_t block_start;
     bloom_filter * filter;

@@ -74,11 +74,6 @@ size_t deseralize_one(void (*insert_func)(void *, void *, void *), byte_buffer *
     key_start = get_next(buffer);
     if ((ret_check = go_nearest_v(buffer, '\"')) == NULL) return -1;
     buffer->buffy[buffer->read_pointer] = '\0';
-    /*
-    real_key_start = &key_values->buffy[key_values->curr_bytes];
-    write_buffer(key_values, key_start, key_length);
-    write_buffer(key_values, "\0", 1);
-    */
     if ((ret_check = go_nearest_v(buffer, ':')) == NULL) return -1;
 
     if ((ret_check = go_nearest_v(buffer, '\"')) == NULL) return -1;
@@ -114,9 +109,6 @@ size_t deseralize_one(void (*insert_func)(void *, void *, void *), byte_buffer *
         default:
             break;
     }
-    //size_t value_length = value_end - value_start;
-    //write_buffer(key_values, value_start, value_length);
-    //write_buffer(key_values, "\0", 1);
     (insert_func(key_start, value_start, data_struct));
     if ((ret_check = go_nearest_v(buffer, ',')) == NULL) return -1;
     return 0;
@@ -169,71 +161,22 @@ int json_b_search(k_v_arr * json, const char * target){
         else if (cmp < 0) min = mid + 1;
         else max= mid-1;
     }
-    return -1;   
+    return -1;
 }
-size_t deseralize_one_2(void (*insert_func)(void *, void *, void *), byte_buffer * buffer, byte_buffer * key_values, void * data_struct){
-    char * ret_check = NULL;
-
-    if ((ret_check = go_nearest_v(buffer, '\"')) == NULL) return -1;
-    char *key_start = NULL, *key_end = NULL, *value_start = NULL, *value_end = NULL, *real_key_start = NULL , *real_value_start = NULL;
-    key_start = get_next(buffer);
-    if ((ret_check = go_nearest_v(buffer, '\"')) == NULL) return -1;
-    key_end = get_curr(buffer);
-
-
-    size_t key_length = key_end - key_start;
-    real_key_start = &key_values->buffy[key_values->curr_bytes];
-    write_buffer(key_values, key_start, key_length);
-    write_buffer(key_values, "\0", 1);
-
-    if ((ret_check = go_nearest_v(buffer, ':')) == NULL) return -1;
-
-    if ((ret_check = go_nearest_v(buffer, '\"')) == NULL) return -1;
-    value_start = get_curr(buffer);
-    int type = findJsonType(*value_start);
-
-    switch (type) {
-        case STRING:
-                    value_start = get_next(buffer);
-                    real_value_start =  &key_values->buffy[key_values->curr_bytes];
-                    while(1){
-                        value_end = go_nearest_v(buffer, '\"');
-                        if (value_end != NULL && *(value_end - 1) != '\\') break; 
-                        if (value_end == NULL) return -1;           
-                    }
-                    if (value_end == NULL) return -1;
-            
-            break;
-        case NUMBER:
-            real_value_start = &key_values->buffy[key_values->curr_bytes];    
-            value_end = &buffer->buffy[buffer->read_pointer + sizeof(size_t)];
-            buffer->read_pointer += sizeof(size_t);
-            break;
-        case OBJECT:
-           
-            break;
-        case ARRAY:
-           
-            break;
-        case BOOL:
-           
-            break;
-        default:
-            break;
+int prefix_b_search(k_v_arr * json, const char * target){
+    int max = json->len -1;
+    size_t min = 0;
+    char ** keys = json->keys;
+    size_t mid;
+    while(min <= max){
+        mid = (max + min) /2;
+        char * temp = keys[mid];
+        if (mid < 0 || max < 0) return 0;
+        int cmp = strcmp(temp, target);
+        if (cmp == 0) return mid;
+        else if (cmp < 0) min = mid + 1;
+        else max= mid-1;
     }
-    size_t value_length = value_end - value_start;
-    write_buffer(key_values, value_start, value_length);
-    write_buffer(key_values, "\0", 1);
-    (insert_func(real_key_start, real_value_start, data_struct));
-    if ((ret_check = go_nearest_v(buffer, ',')) == NULL) return -1;
-    return 0;
-
-}
-size_t deseralize_into_structure_2(void (*insert_func)(void *, void *, void *),void * structure, byte_buffer * buffer, byte_buffer * key_values) {
-    size_t ret = 0;
-    while(buffer->read_pointer < buffer->curr_bytes && ret != -1 ){
-        ret = deseralize_one_2(insert_func,buffer, key_values, structure);
-    }
-    return 0;
+    return mid;
 }
 #endif

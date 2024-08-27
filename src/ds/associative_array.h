@@ -1,4 +1,5 @@
 #include "arena.h"
+#include "../db/backend/key-value.h"
 
 #pragma once
 typedef struct k_v_arr{
@@ -17,9 +18,9 @@ k_v_arr* create_k_v_arr (size_t size, arena * a){
     ar->len = 0;
     return ar;
 }
-void into_array(void * key, void * value, void * ar){
+void into_array(void * ar, void * key, void * value){
     k_v_arr * arr = (k_v_arr*)ar;
-    arr->values[arr->len] = (char*)value;
-    arr->keys[arr->len] =(char*)key;
+    arr->values[arr->len] = (char*)((db_unit*)value)->entry;
+    arr->keys[arr->len] = (char*)((db_unit*)key)->entry;
     arr->len ++;
 }

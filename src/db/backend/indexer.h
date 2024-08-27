@@ -59,6 +59,7 @@ typedef struct block_index{
     bloom_filter * filter;
     char *min_key;
     size_t len;
+    size_t num_keys;
 } block_index;
 
 
@@ -85,6 +86,15 @@ block_index * create_block_index(size_t est_num_keys){
     index->filter = bloom(NUM_HASH_SST, est_num_keys, false, NULL);
     index->min_key = NULL;
     index->len = 0; 
+    index->num_keys =0;
+    return index;
+}
+block_index create_ind_stack(size_t  est_num_keys){
+    block_index index;
+    index.filter = bloom(NUM_HASH_SST, est_num_keys, false, NULL);
+    index.min_key = NULL;
+    index.len = 0; 
+    index.num_keys  =0;
     return index;
 }
 block_index * block_from_stream(byte_buffer * stream, block_index * index){
@@ -92,6 +102,7 @@ block_index * block_from_stream(byte_buffer * stream, block_index * index){
     index->filter = from_stream(stream);
     read_buffer(stream,index->min_key, 100);
     read_buffer(stream, &index->len, sizeof(size_t));
+    read_buffer(stream, &index->num_keys, sizeof(index->num_keys));
     return index;
 }
 void block_to_stream(byte_buffer * targ, block_index * index){
@@ -99,6 +110,7 @@ void block_to_stream(byte_buffer * targ, block_index * index){
     copy_filter(index->filter, targ);
     write_buffer(targ,index->min_key,100);
     write_buffer(targ, (char*)&index->len, sizeof(size_t)); 
+    write_buffer(targ, &index->num_keys, sizeof(&index->num_keys));
 }
 void read_index_block(sst_f_inf * file, byte_buffer * stream)
 {
@@ -139,4 +151,5 @@ void reuse_block_index(void * b){
     index->filter = NULL;
     index->min_key = NULL;
     index->len = 0;
+    index->num_keys = 0;
 }

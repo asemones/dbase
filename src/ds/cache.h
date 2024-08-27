@@ -162,7 +162,7 @@ cache_entry *retrieve_entry(cache * cach, block_index * index, char * file_name)
             fseek(sst_file, index->offset, SEEK_SET);
             ll_node * fresh_page = add_page(cach, sst_file, index->min_key, index->len);
             c = fresh_page->data;
-            deseralize_into_structure(&into_array,c->ar, c->buf);
+            load_block_into_into_ds(c->buf,c->ar,&into_array);
             fclose(sst_file);
         }
         return c;

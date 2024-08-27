@@ -151,10 +151,10 @@ int get_next_key(byte_buffer * buffer, char * store){
 }
 int json_b_search(k_v_arr * json, const char * target){
     int max = json->len -1;
-    size_t min = 0;
+    int min = 0;
     char ** keys = json->keys;
     while(min <= max){
-        size_t mid = (max + min) /2;
+        int mid = (max + min) /2;
         char * temp = keys[mid];
         int cmp = strcmp(temp, target);
         if (cmp == 0) return mid;
@@ -171,7 +171,7 @@ int prefix_b_search(k_v_arr * json, const char * target){
     while(min <= max){
         mid = (max + min) /2;
         char * temp = keys[mid];
-        if (mid < 0 || max < 0) return 0;
+        if (mid < 0 || max < 0) return mid;
         int cmp = strcmp(temp, target);
         if (cmp == 0) return mid;
         else if (cmp < 0) min = mid + 1;

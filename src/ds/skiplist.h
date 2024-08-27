@@ -2,24 +2,26 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <stdint.h>
+#include "byte_buffer.h"
+#include "../db/backend/key-value.h"
 
 #pragma once
 
 #define MAX_LEVEL 16
-
 typedef struct Node {
-    void* key;
-    void* value;
+    db_unit key;
+    db_unit value;
     struct Node* forward[];
 } Node;
-
 typedef struct SkipList {
     int level;
     Node* header;
     int (*compare)(const void*, const void*);
 } SkipList;
+db_unit dummy = {0, NULL};
 
-Node* createNode(int level, void* key, void* value) {
+Node* createNode(int level, db_unit key, db_unit value) {
     Node* node = (Node*)malloc(sizeof(Node) + level * sizeof(Node*));
     node->key = key;
     node->value = value;
@@ -33,9 +35,10 @@ SkipList* createSkipList(int (*compare)(const void*, const void*)) {
     SkipList* list = (SkipList*)malloc(sizeof(SkipList));
     list->level = 1;
     list->compare = compare;
-    list->header = createNode(MAX_LEVEL, NULL, NULL);
+    list->header = createNode(MAX_LEVEL, dummy, dummy);
     return list;
 }
+
 
 int randomLevel() {
     int level = 1;
@@ -45,11 +48,11 @@ int randomLevel() {
     return level;
 }
 
-void insert_list(SkipList* list, void* key, void* value) {
+void insert_list(SkipList* list, db_unit key, db_unit value) {
     Node* update[MAX_LEVEL];
     Node* x = list->header;
     for (int i = list->level - 1; i >= 0; i--) {
-        while (x->forward[i] && list->compare(x->forward[i]->key, key) < 0) {
+        while (x->forward[i] && list->compare(x->forward[i]->key.entry, key.entry) < 0) {
             x = x->forward[i];
         }
         update[i] = x;
@@ -63,7 +66,7 @@ void insert_list(SkipList* list, void* key, void* value) {
         list->level = level;
     }
 
-    Node* newNode = createNode(level, key, value);
+    Node* newNode = createNode(level, key, value );
     for (int i = 0; i < level; i++) {
         newNode->forward[i] = update[i]->forward[i];
         update[i]->forward[i] = newNode;
@@ -73,12 +76,12 @@ void insert_list(SkipList* list, void* key, void* value) {
 Node* search_list(SkipList* list, const void* key) {
     Node* x = list->header;
     for (int i = list->level - 1; i >= 0; i--) {
-        while (x->forward[i] && list->compare(x->forward[i]->key, key) < 0) {
+        while (x->forward[i] && list->compare(x->forward[i]->key.entry, key) < 0) {
             x = x->forward[i];
         }
     }
     x = x->forward[0];
-    if (x && list->compare(x->key, key) == 0) {
+    if (x && list->compare(x->key.entry, key) == 0) {
         return x;
     } 
     else {
@@ -88,7 +91,7 @@ Node* search_list(SkipList* list, const void* key) {
 Node* search_list_prefix(SkipList* list, void* key) {
     Node* x = list->header;
     for (int i = list->level - 1; i >= 0; i--) {
-        while (x->forward[i] && list->compare(x->forward[i]->key, key) < 0) {
+        while (x->forward[i] && list->compare(x->forward[i]->key.entry, key) < 0) {
             x = x->forward[i];
         }
     }
@@ -104,14 +107,14 @@ void delete_element(SkipList* list, void* key) {
     Node* update[MAX_LEVEL];
     Node* x = list->header;
     for (int i = list->level - 1; i >= 0; i--) {
-        while (x->forward[i] && list->compare(x->forward[i]->key, key) < 0) {
+        while (x->forward[i] && list->compare(x->forward[i]->key.entry, key) < 0) {
             x = x->forward[i];
         }
         update[i] = x;
     }
 
     x = x->forward[0];
-    if (x && list->compare(x->key, key) == 0) {
+    if (x && list->compare(x->key.entry, key) == 0) {
         for (int i = 0; i < list->level; i++) {
             if (update[i]->forward[i] != x) {
                 break;

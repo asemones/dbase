@@ -205,8 +205,8 @@ merge_data get_curr_kv(sst_iter  sst_it){
 merge_data next_entry_memtable(mem_table_iter * iter){
     iter->cursor = iter->cursor->forward[0];
     merge_data m;
-    m.key = iter->cursor->key;
-    m.value = iter->cursor->value;
+    m.key = iter->cursor->key.entry;
+    m.value = iter->cursor->value.entry;
     return m;
 }
 /*seeks a prefix in every table*/
@@ -256,8 +256,8 @@ void seek(aseDB_iter * iter , const char * prefix){
         if (seeked_next == NULL) continue;
         iter->mem_table[i].cursor = seeked_next;
         merge_data entry;
-        entry.key = seeked_next->key;
-        entry.value = seeked_next->value;
+        entry.key = seeked_next->key.entry;
+        entry.value = seeked_next->value.entry;
         entry.index = i;
         entry.src = memtable;
         enqueue(iter->pq, &entry);

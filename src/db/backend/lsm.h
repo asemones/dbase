@@ -16,6 +16,7 @@
 #include "../../ds/cache.h"
 #include "../../ds/associative_array.h"
 #include "option.h"
+#include "key-value.h"
 
 #ifndef LSM_H
 #define LSM_H
@@ -99,17 +100,17 @@ storage_engine * create_engine(char * file, char * bloom_file){
     }
     return engine;
 }
-int write_record(storage_engine* engine ,keyword_entry * entry, size_t recordSize){
-    if (entry->keyword == NULL) return -1;
-    if (engine->table[CURRENT_TABLE]->bytes + recordSize >=  MEMTABLE_SIZE){
+int write_record(storage_engine* engine ,db_unit key, db_unit value){
+    if (key.entry== NULL) return -1;
+    if (engine->table[CURRENT_TABLE]->bytes + 4 + key.len + value.len >=  MEMTABLE_SIZE){
         lock_table(engine);
         int status = flush_table(engine);
         if (status != 0) return -1;
     }
-    insert_list(engine->table[CURRENT_TABLE]->skip, entry->keyword, entry->value);
+    insert_list(engine->table[CURRENT_TABLE]->skip, key, value);
     engine->table[CURRENT_TABLE]->num_pair++;
-    engine->table[CURRENT_TABLE]->bytes += recordSize;
-    map_bit(entry->keyword,engine->table[CURRENT_TABLE]->filter);
+    engine->table[CURRENT_TABLE]->bytes += 4 + key.len + value.len ;
+    map_bit(key.entry,engine->table[CURRENT_TABLE]->filter);
     
     return 0;
 }
@@ -174,7 +175,9 @@ char * disk_read(storage_engine * engine, const char * keyword){
         
         size_t index_block= find_block(sst, keyword);
         block_index * index = get_element(sst->block_indexs, index_block);
-       
+        if (strcmp("hello1151", keyword)==0){
+            fprintf(stdout,"no\n");
+        }
         cache_entry * c = retrieve_entry(engine->cach, index, sst->file_name);
         int k_v_array_index = json_b_search(c->ar, keyword);
         if (k_v_array_index== -1) continue;
@@ -186,11 +189,13 @@ char * disk_read(storage_engine * engine, const char * keyword){
 char* read_record(storage_engine * engine, const char * keyword){
     Node * entry= search_list(engine->table[CURRENT_TABLE]->skip, keyword);
     if (entry== NULL) return disk_read(engine, keyword);
-    return entry->value;
+    return entry->value.entry;
     
 }
-int delete_record(storage_engine * engine, const char * keyword, keyword_entry * alloc_entry , dict * read_dict){
-    keyword_entry * entry = search_list(engine->table[CURRENT_TABLE]->skip,(char*)keyword);
+/*REWRITE THIS FUNCTION AFTER EVERYTHING ELSE*/
+/*
+int delete_record(storage_engine * engine, const char * keyword, db_unit key , dict * read_dict){
+    Node* entry = search_list(engine->table[CURRENT_TABLE]->skip,(char*)keyword);
     if (entry == NULL && alloc_entry!=NULL){
         memcpy(alloc_entry->keyword, keyword, strlen(keyword));
         memcpy(alloc_entry->value, TOMB_STONE,2);
@@ -202,13 +207,44 @@ int delete_record(storage_engine * engine, const char * keyword, keyword_entry *
     memcpy(entry->value, TOMB_STONE,2);
     return 0;
 }
-static void seralize_table(SkipList * list, byte_buffer * buffer){
+*/
+/*THIS IS A NEW FUNCTION FOR THE NEW SYSTEM*/
+static void seralize_table(SkipList * list, byte_buffer * buffer, sst_f_inf * s){
     if (list == NULL) return;
     Node * node = list->header->forward[0];
+    size_t sum = 2;
+    int num_entries=  0;
+    int num_entry_loc = buffer->curr_bytes;
+    buffer->curr_bytes+=2;
+    db_unit last_entry;
+    memcpy(&s->min, node->key.entry, node->key.len);
+    size_t num_tables = 0;
+    
+    block_index  b = create_ind_stack(10 *(GLOB_OPTS.BLOCK_INDEX_SIZE/(4*1024)));
     while (node != NULL){
-        seralize_field(node->key, node->value, buffer ,STRING);
+        last_entry = node->key;
+        if (sum  + 4 + node->key.len + node->value.len > GLOB_OPTS.BLOCK_INDEX_SIZE){
+            size_t bytes_to_skip = GLOB_OPTS.BLOCK_INDEX_SIZE - sum;
+            memcpy(&buffer->buffy[num_entry_loc],&num_entries,2);
+            b.len = sum;
+            build_index(s, &b, buffer, num_entries, num_entry_loc);
+            buffer->curr_bytes +=bytes_to_skip;
+            num_entry_loc = buffer->curr_bytes;
+            buffer->curr_bytes +=2; //for the next num_entry_loc;
+            num_entries = 0;
+            sum = 2;
+            num_tables++;
+        }
+        sum += write_db_unit(buffer, node->key);
+        sum += write_db_unit(buffer, node->value);
+        map_bit(node->key.entry, b.filter);
         node = node->forward[0];
+        num_entries++;
     }
+    memcpy(&buffer->buffy[num_entry_loc], &num_entries, 2);
+    build_index(s, &b,buffer, num_entries, num_entry_loc);
+    memcpy(&s->max, last_entry.entry, last_entry.len);
+    grab_time(s->timestamp);
 }
 void lock_table(storage_engine * engine){
    engine->table[CURRENT_TABLE]->immutable = true;
@@ -233,37 +269,22 @@ static int flush_table(storage_engine * engine){
         sst->block_indexs = List(0, sizeof(block_index), true);
         sst->filter = table->filter;
     }
-
-
-    
     if (table->bytes <= 0) {
-        free_buffer(buffer);
+        return_struct(engine->write_pool, buffer,&reset_buffer);
         return -1;
     }
-    seralize_table(table->skip, buffer);
+    seralize_table(table->skip, buffer, sst);
     sst->length = buffer->curr_bytes;
-    
-   //sst->id = meta->num_sst_file;
-
-   
-    gen_sst_fname(meta->num_sst_file, LVL_0, sst->file_name);
-    meta->num_sst_file ++;
-    go_nearest_v(buffer, '{');
-    get_next(buffer);
-    byte_buffer * staging = request_struct(engine->write_pool);
-    struct write_info w_info;
-    w_info.file = sst->file_name;
-    w_info.staging = staging;
-    w_info.table_store = buffer;
-    w_info.table_s = GLOB_OPTS.BLOCK_INDEX_SIZE;
-
-    build_and_write_all_tables(w_info, sst);
-    
-
+    buffer->curr_bytes +=10;
+    sst->block_start = buffer->curr_bytes;
     meta->db_length+= buffer->curr_bytes;
-    return_struct(engine->write_pool, buffer,&reset_buffer);
-
-    //insert(meta->filters,table->filter);
+    all_index_stream(sst->block_indexs->len, buffer, sst->block_indexs);
+    copy_filter(sst->filter, buffer);
+    gen_sst_fname(meta->num_sst_file, LVL_0, sst->file_name);
+    FILE * sst_f = fopen(sst->file_name, "wb");
+    fwrite(&buffer->buffy[0], sizeof(unsigned char),buffer->curr_bytes,sst_f);
+    fflush(sst_f);
+    meta->num_sst_file ++;
     table->immutable= false;
     return_struct(engine->write_pool, buffer,&reset_buffer);
     return 0;

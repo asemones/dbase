@@ -1,7 +1,0 @@
-"filename", "language", "Markdown", "C++", "comment", "blank", "total"
-"/home/asemones/Documents/personal_code/dbase/README.md", "Markdown", 5, 0, 0, 4, 9
-"/home/asemones/Documents/personal_code/dbase/src/db/backend/iter.h", "C++", 0, 58, 1, 2, 61
-"/home/asemones/Documents/personal_code/dbase/src/db/backend/json.h", "C++", 0, 14, 0, 0, 14
-"/home/asemones/Documents/personal_code/dbase/src/ds/skiplist.h", "C++", 0, 14, 0, 1, 15
-"/home/asemones/Documents/personal_code/dbase/src/util/stringutil.h", "C++", 0, 3, 0, 0, 3
-"Total", "-", 5, 89, 1, 7, 102

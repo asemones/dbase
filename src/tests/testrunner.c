@@ -11,11 +11,9 @@
 #include "testjson.h"
 #include "testmetadata.h"
 #include "testlsm.h"
-/*
-#include "testcompactor.h"
 #include "testlru.h"
-#include "test_iter.h"
-*/
+#include "testcompactor.h"
+//#include "test_iter.h"
 
 
 
@@ -87,7 +85,12 @@ int main(void) {
     RUN_TEST(test_create_engine);
     RUN_TEST(test_write_engine);
     RUN_TEST(test_write_then_read_engine);
-    /*
+    fprintf(stderr, "RUNNING LRU TESTS\n");
+    RUN_TEST(test_cache_init);
+    RUN_TEST(test_cache_add_and_get);
+    RUN_TEST(test_cache_evict);
+    
+    
     fprintf(stderr, "RUNNING COMPACTION TESTS\n");
     RUN_TEST(test_merge_tables);
     RUN_TEST(test_merge_one_table);

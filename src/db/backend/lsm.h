@@ -218,7 +218,7 @@ static void seralize_table(SkipList * list, byte_buffer * buffer, sst_f_inf * s)
     buffer->curr_bytes+=2;
     db_unit last_entry;
     memcpy(&s->min, node->key.entry, node->key.len);
-    size_t num_tables = 0;
+
     
     block_index  b = create_ind_stack(10 *(GLOB_OPTS.BLOCK_INDEX_SIZE/(4*1024)));
     while (node != NULL){
@@ -233,7 +233,7 @@ static void seralize_table(SkipList * list, byte_buffer * buffer, sst_f_inf * s)
             buffer->curr_bytes +=2; //for the next num_entry_loc;
             num_entries = 0;
             sum = 2;
-            num_tables++;
+          
         }
         sum += write_db_unit(buffer, node->key);
         sum += write_db_unit(buffer, node->value);

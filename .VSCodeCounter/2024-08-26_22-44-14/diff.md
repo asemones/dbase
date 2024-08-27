@@ -1,28 +1,27 @@
 # Diff Summary
 
-Date : 2024-08-22 17:43:52
+Date : 2024-08-26 22:44:14
 
 Directory /home/asemones/Documents/personal_code/dbase
 
-Total : 5 files,  94 codes, 1 comments, 7 blanks, all 102 lines
+Total : 8 files,  -54 codes, 17 comments, -9 blanks, all -46 lines
 
 [Summary](results.md) / [Details](details.md) / Diff Summary / [Diff Details](diff-details.md)
 
 ## Languages
 | language | files | code | comment | blank | total |
 | :--- | ---: | ---: | ---: | ---: | ---: |
-| C++ | 4 | 89 | 1 | 3 | 93 |
-| Markdown | 1 | 5 | 0 | 4 | 9 |
+| C | 1 | -19 | 23 | -1 | 3 |
+| C++ | 7 | -35 | -6 | -8 | -49 |
 
 ## Directories
 | path | files | code | comment | blank | total |
 | :--- | ---: | ---: | ---: | ---: | ---: |
-| . | 5 | 94 | 1 | 7 | 102 |
-| . (Files) | 1 | 5 | 0 | 4 | 9 |
-| src | 4 | 89 | 1 | 3 | 93 |
-| src/db | 2 | 72 | 1 | 2 | 75 |
-| src/db/backend | 2 | 72 | 1 | 2 | 75 |
-| src/ds | 1 | 14 | 0 | 1 | 15 |
-| src/util | 1 | 3 | 0 | 0 | 3 |
+| . | 8 | -54 | 17 | -9 | -46 |
+| src | 8 | -54 | 17 | -9 | -46 |
+| src/db | 4 | -27 | -3 | -15 | -45 |
+| src/db/backend | 4 | -27 | -3 | -15 | -45 |
+| src/ds | 2 | -8 | 0 | 2 | -6 |
+| src/tests | 2 | -19 | 20 | 4 | 5 |
 
 [Summary](results.md) / [Details](details.md) / Diff Summary / [Diff Details](diff-details.md)

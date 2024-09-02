@@ -68,6 +68,11 @@ typedef struct compact_manager{
     list * bloom_filters;
     cache * c; // of type bloom_filter, FROM META DATA
 }compact_manager;
+typedef struct comp_data{
+    db_unit key;
+    db_unit value;
+    char index;
+}comp_data;
 //compaction algorithm:
 /*
 leveled compaction with the goal of cutting down on high latency spikes: We can assume that b bytes of io bandwith are assigned to the dbms
@@ -164,6 +169,9 @@ compact_manager * init_cm(meta_data * meta, cache * c){
 
     return manager;
 }
+int cmp_comp_data(comp_data one, comp_data two, int max, int dt){
+    return master_comparison(&one.key, &two.key, max, dt);
+}
 struct tm parse_timestamp(const char *timestamp) {
     struct tm tm;
     memset(&tm, 0, sizeof(struct tm));
@@ -188,10 +196,7 @@ int compare_time_stamp(const char * time1, const char * time2){
 size_t load_into_ll(ll* l,arena * allocator, void(*func)(void*, void*, void*), byte_buffer * buffer){
     l->iter = l->head;
     size_t ret_check = 0;
-    while(buffer->read_pointer < buffer->max_bytes){
-        ret_check = deseralize_one(func, buffer, l);
-        if (ret_check == -1) return 0;
-    }
+    load_block_into_into_ds(buffer, l,&push_ll_void);
     return 0;
 }
 size_t refill_table(compact_infos * completed_table, ll * list, size_t next_block_index, byte_buffer * use){
@@ -210,7 +215,7 @@ size_t refill_table(compact_infos * completed_table, ll * list, size_t next_bloc
         return 0;
     }
     fclose(file);
-    load_into_ll(list, list->a, &push_ll_void,use);
+    load_into_ll(list, &push_ll_void,use);
     return use->curr_bytes;
 }
 static int entry_len(merge_data entry){

@@ -21,6 +21,11 @@ void certify_babybase(storage_engine * l) {
         
         k.entry =expected_key;
         v.entry = expected_value;
+        db_unit k;
+        db_unit v;
+        
+        k.entry =expected_key;
+        v.entry = expected_value;
 
         if (i % 3 == 0) {
             sprintf(expected_key, "common%d", i / 3);
@@ -104,6 +109,11 @@ void test_merge_0_to_filled_one(void){
         
         k.entry =key;
         v.entry = value;
+        db_unit k;
+        db_unit v;
+        
+        k.entry =key;
+        v.entry = value;
         if (i % 3 == 0) {
             sprintf(key, "common%d", i / 3); 
             sprintf(value, "third_value%d", i / 3);
@@ -116,6 +126,9 @@ void test_merge_0_to_filled_one(void){
             sprintf(key, "key%d", i);
             sprintf(value, "value%d", i);
         }
+        k.len = strlen(k.entry) + 1;
+        v.len= strlen(v.entry)+1;
+        write_record(l, k,v);
         k.len = strlen(k.entry) + 1;
         v.len= strlen(v.entry)+1;
         write_record(l, k,v);
@@ -148,6 +161,11 @@ void test_attempt_to_break_compactor(){
         
         k.entry =key;
         v.entry = value;
+        db_unit k;
+        db_unit v;
+        
+        k.entry =key;
+        v.entry = value;
         if (i % 3 == 0) {
             sprintf(key, "common%d", i / 3); 
             sprintf(value, "third_value%d", i / 3);
@@ -160,6 +178,9 @@ void test_attempt_to_break_compactor(){
             sprintf(key, "key%d", i);
             sprintf(value, "value%d", i);
         }
+        k.len = strlen(k.entry)+ 1;
+        v.len= strlen(v.entry)+1;
+        write_record(l, k,v);
         k.len = strlen(k.entry)+ 1;
         v.len= strlen(v.entry)+1;
         write_record(l, k,v);

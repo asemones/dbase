@@ -5,6 +5,10 @@
 #include "../../ds/byte_buffer.h"
 #include "option.h"
 #include <stdint.h>
+#define ERR -1000
+#define INT 0
+#define FLOAT 1 
+#define STR 2
 
 
 
@@ -14,9 +18,7 @@ typedef struct db_unit{
 }db_unit;
 
 #pragma once
-
-
-
+/* for comparison functions*/
 /*NEW STORAGE FORMAT: 
 [num entries ... key len A, value len A,....... Key A Value A ]
 */
@@ -45,6 +47,51 @@ size_t load_block_into_into_ds(byte_buffer *stream, void *ds, void (*func)(void 
 
     return num_bytes;
 }
+int byte_wise_comp(db_unit one, db_unit two) {
+    int len = max(one.len, two.len);
+    char *typecasted_one = one.entry;
+    char *typecasted_two = two.entry;
+    for (int i = 0; i < len; i++) {
+        if (typecasted_one[i] < typecasted_two[i]) return -1;
+        else if (typecasted_one[i] > typecasted_two[i]) return 1;
+    }
+    if (one.len == two.len) return 0;
+    return (one.len > two.len) ? 1 : -1;
+}
+
+int comp_int(db_unit one, db_unit two) {
+    int a = *(int*)one.entry;
+    int b = *(int*)two.entry;
+    if (a < b) return -1;
+    if (a > b) return 1;
+    return 0;
+}
+
+int comp_float(db_unit one, db_unit two) {
+    float a = *(float*)one.entry;
+    float b = *(float*)two.entry;
+    if (a < b) return -1;
+    if (a > b) return 1;
+    return 0;
+}
+
+int master_comparison(db_unit *one, db_unit *two, int max, int dt) {
+    if (one == NULL || two == NULL || two->entry == NULL || one->entry == NULL){
+        return ERR;
+    }
+    switch (dt) {
+        case INT:
+            return comp_int(*one,* two);
+        case FLOAT:
+            return comp_float(*one, *two);
+        case STR:
+            return (max <= 0) ? strcmp((char*)one->entry, (char*)two->entry)
+            : strncmp((char*)one->entry, (char*)two->entry, max);
+        default:
+            return byte_wise_comp(*one, *two);
+    }
+}
+
 
 
 

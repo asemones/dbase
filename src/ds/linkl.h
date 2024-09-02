@@ -36,11 +36,11 @@ ll * free_ll(ll * list, void (*free_func)(void*)){
     free(list);
     return NULL;
 }
-void push_ll_void(void * key, void * value,void* v_ll){
+void push_ll_void(void* v_ll, void * key, void * value){
     ll * l = (ll*)v_ll;
-    kv * temp = arena_alloc(l->a, sizeof(kv));
-    temp->key = key;
-    temp->value = value;
+    comp_data *temp = arena_alloc(l->a, sizeof(merge_data));
+    temp->key = *(db_unit*)key;
+    temp->value = *(db_unit*)value;
     l->iter->data = temp;
     l->iter->next = arena_alloc(l->a, sizeof(ll_node));
     l->iter->next->prev = l->iter;

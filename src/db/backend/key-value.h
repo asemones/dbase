@@ -22,7 +22,17 @@ typedef struct db_unit{
 /*NEW STORAGE FORMAT: 
 [num entries ... key len A, value len A,....... Key A Value A ]
 */
-
+enum source {
+    memtable,
+    lvl_0,
+    lvl_1_7
+};
+typedef struct merge_data {
+    db_unit * key;
+    db_unit * value;
+    char index;
+    enum source src;
+}merge_data;
 int write_db_unit(byte_buffer * b, db_unit u){
 
     write_buffer(b, (char*)&u.len, sizeof(u.len));

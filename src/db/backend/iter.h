@@ -17,11 +17,7 @@ has a gurantee of no range overlaps, only one sst_iter is needed per level and o
 level 0. Since blocks also have a gurantee of being ordered, only one block index cursor is required
 per level. This enables each sub-iter to return their "next" and have that compared to every
 other "next".*/
-enum source {
-    memtable,
-    lvl_0,
-    lvl_1_7
-};
+
 typedef struct block_iter {
     k_v_arr * arr;
     int curr_key_ind;          
@@ -53,12 +49,7 @@ typedef struct aseDB_iter {
     list * ret;
     cache * c;
 } aseDB_iter;
-typedef struct merge_data {
-    db_unit * key;
-    db_unit * value;
-    char index;
-    enum source src;
-}merge_data;
+
 
 
 

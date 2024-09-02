@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include "arena.h"
 #include "../util/alloc_util.h"
+
 #pragma once
 
 typedef struct ll_node{
@@ -36,11 +37,11 @@ ll * free_ll(ll * list, void (*free_func)(void*)){
     free(list);
     return NULL;
 }
-void push_ll_void(void* v_ll, void * key, void * value){
+void push_ll_void(void * key, void * value,void* v_ll){
     ll * l = (ll*)v_ll;
-    comp_data *temp = arena_alloc(l->a, sizeof(merge_data));
-    temp->key = *(db_unit*)key;
-    temp->value = *(db_unit*)value;
+    merge_data* temp = arena_alloc(l->a, sizeof(merge_data));
+    temp->key = key;
+    temp->value = value;
     l->iter->data = temp;
     l->iter->next = arena_alloc(l->a, sizeof(ll_node));
     l->iter->next->prev = l->iter;

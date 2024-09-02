@@ -68,11 +68,7 @@ typedef struct compact_manager{
     list * bloom_filters;
     cache * c; // of type bloom_filter, FROM META DATA
 }compact_manager;
-typedef struct comp_data{
-    db_unit key;
-    db_unit value;
-    char index;
-}comp_data;
+
 //compaction algorithm:
 /*
 leveled compaction with the goal of cutting down on high latency spikes: We can assume that b bytes of io bandwith are assigned to the dbms
@@ -169,9 +165,6 @@ compact_manager * init_cm(meta_data * meta, cache * c){
 
     return manager;
 }
-int cmp_comp_data(comp_data one, comp_data two, int max, int dt){
-    return master_comparison(&one.key, &two.key, max, dt);
-}
 struct tm parse_timestamp(const char *timestamp) {
     struct tm tm;
     memset(&tm, 0, sizeof(struct tm));
@@ -191,42 +184,10 @@ int compare_time_stamp(const char * time1, const char * time2){
     return difftime (mktime(&tm1), mktime(&tm2));
 }
 
-
-
-size_t load_into_ll(ll* l,arena * allocator, void(*func)(void*, void*, void*), byte_buffer * buffer){
-    l->iter = l->head;
-    size_t ret_check = 0;
-    load_block_into_into_ds(buffer, l,&push_ll_void);
-    return 0;
-}
-size_t refill_table(compact_infos * completed_table, ll * list, size_t next_block_index, byte_buffer * use){
-    FILE * file = fopen(completed_table->sst_file->file_name,"rb");
-    block_index * index = get_element(completed_table->sst_file->block_indexs, next_block_index);
-    if (index == NULL) {
-        completed_table->complete = true;
-        return 0;
-    }
-    fseek(file,index->offset, SEEK_SET);
-    
-    size_t read = fread(use->buffy, 1, index->len, file);
-    use->curr_bytes = read;
-    if (read == 0) {
-        completed_table->complete = true;
-        return 0;
-    }
-    fclose(file);
-    load_into_ll(list, &push_ll_void,use);
-    return use->curr_bytes;
-}
 static int entry_len(merge_data entry){
     return entry.key->len + sizeof(entry.key->len) + entry.value->len + sizeof(entry.value->len);
 
 }
-typedef struct comp_data{
-    db_unit * key;
-    db_unit * value;
-    int index;
-}comp_data;
 merge_data discard_same_keys(frontier *pq, sst_iter *its, cache *c, merge_data initial) {
     merge_data best_entry = initial;
     merge_data current = initial;

@@ -7,6 +7,7 @@
 #include "../../util/alloc_util.h"
 #include "indexer.h"
 #include "option.h"
+
 #pragma once    
 struct write_info{
     byte_buffer * table_store;
@@ -28,14 +29,22 @@ void build_table_from_json_stream(struct write_info write, size_t num_table){
     write.table_store->read_pointer -=difference-1;
     return;
 }
+void grab_min_b_key(block_index * index, byte_buffer *b, int loc){
+    u_int16_t key_len;
+    memcpy(&key_len, &b->buffy[loc + 2], sizeof(u_int16_t));
+    memcpy(index->min_key, &b->buffy[loc+4], key_len);
+}
 void build_index(sst_f_inf * sst, block_index * index, byte_buffer * b, size_t num_entries, size_t block_offsets){
 
-    size_t multipler = GLOB_OPTS.SST_TABLE_SIZE/(GLOB_OPTS.BLOCK_INDEX_SIZE);
     index->offset = block_offsets;
-    index->min_key = (char*)arena_alloc(sst->mem_store, 40);
+    index->uuid = arena_alloc(sst->mem_store,40);
+    grab_uuid(index->uuid);
     u_int16_t key_len;
-    memcpy(&key_len, &b->buffy[block_offsets + 2], sizeof(u_int16_t));
-    memcpy(index->min_key, &b->buffy[block_offsets +4], key_len);
+    if (b){
+        index->min_key = (char*)arena_alloc(sst->mem_store, 40);
+        memcpy(&key_len, &b->buffy[block_offsets + 2], sizeof(u_int16_t));
+        memcpy(index->min_key, &b->buffy[block_offsets +4], key_len);
+    } 
     index->num_keys = num_entries;
     insert(sst->block_indexs, index);  
 }   

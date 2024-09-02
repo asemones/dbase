@@ -7,6 +7,7 @@
 #include "unity/src/unity.h"
 #include "../ds/arena.h"
 #include "../util/alloc_util.h"
+#include "../db/backend/key-value.h"
 #pragma once
 
 
@@ -15,12 +16,13 @@ void create_a_babybase(void) {
     char* bloom_file = "bloom.bin";
     storage_engine *l = create_engine(meta_file, bloom_file);
     const int size = 6000;
-    keyword_entry entry[size];
+    db_unit k[size];
+    db_unit v[size];
     for (int i = 0; i < size; i++) {
         char *key = (char*)wrapper_alloc(30, NULL, NULL);
         char *value = (char*)wrapper_alloc(30, NULL, NULL);
-        entry[i].keyword = key;
-        entry[i].value = value;
+        k[i].entry = key;
+        v[i].entry=  value;
 
         if (i % 3 == 0) {
             sprintf(key, "common%d", i / 3); 
@@ -29,8 +31,10 @@ void create_a_babybase(void) {
             sprintf(key, "hello%d", i);
             sprintf(value, "world%d", i);
         }
+        k[i].len = strlen(key)+1;
+        v[i].len = strlen(value)+1;
 
-        write_record(l, &entry[i], strlen(entry[i].keyword) + strlen(entry[i].value));
+        write_record(l, k[i],v[i]);
     }
 
     lock_table(l);
@@ -38,17 +42,16 @@ void create_a_babybase(void) {
 
    
     for (int i = 0; i < size; i++) {
-        free(entry[i].keyword);
-        free(entry[i].value);
+        free(k[i].entry);
+        free(v[i].entry);
     }
 
     usleep(1000000);
     for (int i = 0; i < size; i++) {
         char *key = (char*)wrapper_alloc(30, NULL, NULL);
         char *value = (char*)wrapper_alloc(30, NULL, NULL);
-        entry[i].keyword = key;
-        entry[i].value = value;
-
+        k[i].entry = key;
+        v[i].entry=  value;
         if (i % 3 == 0) {
             sprintf(key, "common%d", i / 3); 
             sprintf(value, "second_value%d", i / 3);  
@@ -57,16 +60,17 @@ void create_a_babybase(void) {
             sprintf(value, "value%d", i);
         }
 
-        write_record(l, &entry[i], strlen(entry[i].keyword) + strlen(entry[i].value));
+        k[i].len = strlen(key)+1;
+        v[i].len = strlen(value)+1;
+        write_record(l, k[i],v[i]); 
     }
-
     lock_table(l);
     flush_table(l);
 
     // Free allocated memory for the second table
     for (int i = 0; i < size; i++) {
-        free(entry[i].keyword);
-        free(entry[i].value);
+         free(k[i].entry);
+         free(v[i].entry);
     }
 
     free_engine(l, meta_file, bloom_file);
@@ -74,15 +78,16 @@ void create_a_babybase(void) {
 storage_engine * create_messy_db(){
     create_a_babybase();
     storage_engine * l = create_engine("meta.bin", "bloom.bin");
-    compact_manager* cm = init_cm(l->meta);
+    compact_manager* cm = init_cm(l->meta, l->cach);
     compact_one_table(cm, 0,0,1,0);
     compact_one_table(cm, 1,1,6,1);
     for (int i = 6000; i < 9000; i++) {
         char *key = (char*)wrapper_alloc(60, NULL, NULL);
         char *value = (char*)wrapper_alloc(60, NULL, NULL);
-        keyword_entry entry;
-        entry.keyword = key;
-        entry.value = value;
+        db_unit k;
+        db_unit v;
+        k.entry = key;
+        v.entry= value;
         if (i % 3 == 0) {
             sprintf(key, "common%d", i / 3); 
             sprintf(value, "third_value%d", i / 3);
@@ -95,7 +100,9 @@ storage_engine * create_messy_db(){
             sprintf(key, "key%d", i);
             sprintf(value, "value%d", i);
         }
-        write_record(l, &entry, strlen(entry.keyword) + strlen(entry.value));
+        k.len = strlen(k.entry) + 1;
+        v.len= strlen(v.entry)+1;
+        write_record(l, k,v);
         
     }
     return l;

@@ -12,6 +12,8 @@
 #include "../../util/alloc_util.h"
 #include "sst_builder.h"
 #include "option.h"
+#include "iter.h"
+#include "../../ds/threadpool.h"
 #ifndef COMPACTOR_H
 #define COMPACTOR_H
 #define NUM_THREADP 1
@@ -63,7 +65,8 @@ typedef struct compact_manager{
     size_t min_compact_ratio;
     struct_pool * page_buffer_pool;
     struct_pool * big_buffer_pool;
-    list * bloom_filters; // of type bloom_filter, FROM META DATA
+    list * bloom_filters;
+    cache * c; // of type bloom_filter, FROM META DATA
 }compact_manager;
 //compaction algorithm:
 /*
@@ -113,7 +116,24 @@ compact_job * create_compact_job(){
     j->new_sst_files = List(0, sizeof(sst_f_inf), false);
     return j;
 }
-compact_manager * init_cm(meta_data * meta){
+void generate_random_filename(char *filename, size_t length) {
+    const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    size_t charset_size = sizeof(charset) - 1;
+    srand(time(NULL));
+
+    for (size_t i = 0; i < length - 21; i++) {
+        filename[i] = charset[rand() % charset_size];
+    }
+    filename[length - 1] = '\0';
+
+    // Add a timestamp to ensure uniqueness
+    time_t t = time(NULL);
+    struct tm *tm_info = localtime(&t);
+    char timestamp[20];
+    strftime(timestamp, 20, "_%Y%m%d%H%M%S", tm_info);
+    strcat(filename, timestamp);
+}
+compact_manager * init_cm(meta_data * meta, cache * c){
     compact_manager * manager = (compact_manager*)wrapper_alloc((sizeof(compact_manager)), NULL,NULL);
     for (int i = 0;  i < NUM_THREADP ;i++){
         manager->pool[i] = thread_Pool(NUM_THREAD, 0);
@@ -137,7 +157,9 @@ compact_manager * init_cm(meta_data * meta){
     for (int i = 0; i < NUM_BIG_BUFFERS ; i++)
     {
         insert_struct(manager->big_buffer_pool, create_buffer(MB));
-    }
+    }   
+    manager->c = c;
+    
     
 
     return manager;
@@ -160,54 +182,7 @@ int compare_time_stamp(const char * time1, const char * time2){
     struct tm tm2 = parse_timestamp(time2);
     return difftime (mktime(&tm1), mktime(&tm2));
 }
-static size_t write_entry(char * next_key, char * next_value, byte_buffer * dest_buffer){
-    const size_t num_of_single_characers = 6;
-    const size_t entry_len = strlen(next_key) + strlen(next_value) + num_of_single_characers;
-    write_buffer(dest_buffer, "\"", 1);
-    write_buffer(dest_buffer, next_key, strlen(next_key));
-    write_buffer(dest_buffer, "\"", 1);
-    write_buffer(dest_buffer, ":", 1);
-    write_buffer(dest_buffer, "\"", 1);
-    write_buffer(dest_buffer,next_value, strlen(next_value));
-    write_buffer(dest_buffer, "\"", 1);
-    write_buffer(dest_buffer, ",", 1);
-    return entry_len;
-}
-static int handle_same_key(kv *prev, kv *current, compact_infos * preve, compact_infos * curr, byte_buffer *dest_buffer) {
-    string key = stack_str(current->key);
-    string value = stack_str(current->value);
-    string prev_value = stack_str(prev->value);
 
-    size_t bytes_changed = 0;
-
-   
-    size_t old_read_ptr = dest_buffer->read_pointer;
-
-    
-    dest_buffer->read_pointer = dest_buffer->curr_bytes - 1;
-    dest_buffer->read_pointer = back_track(dest_buffer, ',', dest_buffer->curr_bytes - 2, dest_buffer->max_bytes);
-    char temp[100];
-    get_next_key(dest_buffer, temp);
-    dest_buffer->read_pointer = old_read_ptr;
-
- 
-    if (strcmp(temp, key.data) == 0) {
-        size_t bytes_to_remove = strlen(key.data) + strlen(prev_value.data) + 6;  
-        dest_buffer->curr_bytes -= bytes_to_remove;
-        bytes_changed -= bytes_to_remove;  
-    }
-
-    int recent = compare_time_stamp(preve->time_stamp, curr->time_stamp);
-
-    if (recent > 0 && string_cmp(prev_value, stack_str(TOMB_STONE)) != 0) {
-        bytes_changed += write_entry(key.data, prev_value.data, dest_buffer);
-    } 
-    else if (recent <=0 && string_cmp(value, stack_str(TOMB_STONE)) != 0) {
-        bytes_changed += write_entry(key.data, value.data, dest_buffer);
-    }
-
-    return bytes_changed;
-}
 
 
 size_t load_into_ll(ll* l,arena * allocator, void(*func)(void*, void*, void*), byte_buffer * buffer){
@@ -238,192 +213,223 @@ size_t refill_table(compact_infos * completed_table, ll * list, size_t next_bloc
     load_into_ll(list, list->a, &push_ll_void,use);
     return use->curr_bytes;
 }
-static int entry_len(kv * entry){
-    return strlen(entry->key) +2 + strlen(entry->value) + 2;
+static int entry_len(merge_data entry){
+    return entry.key->len + sizeof(entry.key->len) + entry.value->len + sizeof(entry.value->len);
 
 }
-size_t write_block_to_file(FILE *file, sst_f_inf *new_sst, byte_buffer *dest_buffer, size_t total_bytes, size_t *num_blocks, size_t block_size) {
-    struct write_info info;
-    info.table_store = dest_buffer;
-    info.table_s = block_size;
-    info.staging = create_buffer(GLOB_OPTS.BLOCK_INDEX_SIZE * 1.1);
+typedef struct comp_data{
+    db_unit * key;
+    db_unit * value;
+    int index;
+}comp_data;
+merge_data discard_same_keys(frontier *pq, sst_iter *its, cache *c, merge_data initial) {
+    merge_data best_entry = initial;
+    merge_data current = initial;
 
-    build_table_from_json_stream(info, *num_blocks);
-    (*num_blocks)++;
-    build_index(new_sst,total_bytes, *num_blocks, info);
-    size_t ret = fwrite(info.staging->buffy, 1, info.staging->curr_bytes+1, file);
-    free_buffer(info.staging);
-    return ret;
-}
-
-sst_f_inf *create_new_sst_file(compact_job *job, size_t *num_output_table, size_t *curr_file_index, byte_buffer *dest_buffer, char files[][128], FILE **file) {
-    char file_name[128];
-    sprintf(file_name, "in_prog_sst_%zu_%zu", job->id + *num_output_table, job->end_level);
-    memcpy(files[*curr_file_index], file_name, strlen(file_name) + 1);
-    (*curr_file_index)++;
-    *file = fopen(file_name, "wb");
-
-    sst_f_inf *new_sst = create_sst_file_info(file_name, 0, NUM_WORD, NULL);
-    new_sst->block_start = job->maxiumum_file_size;
-    insert(job->new_sst_files, new_sst);
-
-    reset_buffer(dest_buffer);
-
-    return new_sst;
-}
-
-
-
-void merge_tables(compact_infos** compact, byte_buffer *dest_buffer, compact_job * job, arena *a) {
-    byte_buffer *storage[10];
-    byte_buffer * use_me[10];
-    ll *table_lists[10];
-    frontier *pq = Frontier(sizeof(kv), 0, &compare_kv_v);
-    size_t prev_index = 0;
-    size_t curr_index = 0;
-    size_t block_indexs[10] = {0};
-    size_t num_sst = job->working_files;
-    size_t big_byte_counter =0;
-    char files [10][128];
-    size_t curr_file_index = 0;
-    kv  prev;
-    prev.key = NULL;
-    kv prev_kvs [10];
-    char file_name[128]; /*1111*/
-    size_t num_output_table = 0;
-    sprintf(file_name, "in_prog_sst_%zu_%zu", job->id,job->end_level);
-    FILE * file = fopen(file_name, "wb");
-    sst_f_inf *  new_sst = create_sst_file_info(file_name, 0, NUM_WORD, NULL);
-    insert(job->new_sst_files, new_sst);
-    size_t num_blocks = 0;
-   
-    size_t offset = 0;
-
-    for (int i = 0; i < num_sst; i++) {
-        table_lists[i] = create_ll(a);
-        table_lists[i]->iter = table_lists[i]->head;
-        storage[i] = create_buffer(compact[i]->buffer->max_bytes);
-        use_me[i] = compact[i]->buffer;
-    }
-
-    for (int i = 0; i < num_sst; i++) {
-        ll_node *head = table_lists[i]->head;
-        refill_table(compact[i], table_lists[i], block_indexs[i], use_me[i]);
-        if (head != NULL) {
-            enqueue(pq, head->data);
-            table_lists[i]->head = table_lists[i]->head->next;
-            prev_kvs[i] = *(kv *)head->data;
-         
-        }
-        memcpy(compact[i]->time_stamp, compact[i]->sst_file->timestamp, strlen(compact[i]->sst_file->timestamp));
-        block_indexs[i]++;
-    }
-    size_t num_bytes = 0;
-    
     while (pq->queue->len > 0) {
-        kv smallest;
-        smallest.key = NULL;
-        smallest.value = NULL;
-        dequeue(pq, &smallest);
-        //debug_print(pq);
-        //final value can get wiped
-        if (strcmp(smallest.value, "second_value1111") == 0){
-            fprintf(stdout, "no\n");
-        }
-        if (strncmp(smallest.value, TOMB_STONE,1) == 0) {
-            continue;
-        }
-        for (int i = 0; i < num_sst; i++) {
-            if (table_lists[i]->head== NULL || (table_lists[i]->head->data == NULL && !compact[i]->complete)){
-                use_me[i] = (compact[i]->buffer == use_me[i])? storage[i]:compact[i]->buffer;
-                reset_buffer(use_me[i]);
-                size_t bytes = refill_table ( compact[i], table_lists[i], block_indexs[i], use_me[i]);
-                block_indexs[i]++;
-                if (bytes == 0) continue;
-            } 
-            if(table_lists[i]->head->data == NULL) continue;
-            if (prev_kvs[i].key  == NULL ||  compare_kv(&smallest, &prev_kvs[i]) != 0) continue;
-            curr_index = i;
-            enqueue(pq, table_lists[i]->head->data);
-            prev_kvs[i] =  *(kv *)table_lists[i]->head->data;
-            table_lists[i]->head = table_lists[i]->head->next;
-
-
+        merge_data *next_in_line = peek(pq);
+        if (next_in_line == NULL || next_in_line->key == NULL || compare_merge_data(&current, next_in_line) != 0) {
             break;
         }
-        if (prev.key!= NULL && strcmp(smallest.key, prev.key) == 0) {
-            int l = handle_same_key(&prev, &smallest,compact[prev_index], compact[curr_index],dest_buffer);
-            num_bytes += l;
-            big_byte_counter += l;
-            prev = smallest;
-            prev_index = curr_index;
-            continue;
-        }
-        if (entry_len(&smallest)+ big_byte_counter >= job->maxiumum_file_size) {
-            write_block_to_file(file, new_sst, dest_buffer,offset, &num_blocks, GLOB_OPTS.BLOCK_INDEX_SIZE);
-            offset = 0;
-            sst_f_inf * temp = get_element(job->new_sst_files, num_output_table);
-            memcpy(temp->max, prev.key, sizeof(prev.key));
-            reset_buffer(dest_buffer);
-            for (int i = 0; i < num_blocks; i++){
-                block_index * block = (block_index*)get_element(new_sst->block_indexs, i);
-                block_to_stream(dest_buffer, block);
-            }
-            copy_filter(new_sst->filter, dest_buffer);
-            fseek(file, job->maxiumum_file_size+10, SEEK_SET);
-            fwrite(dest_buffer->buffy, 1, dest_buffer->curr_bytes+1, file);
-        
-            temp->block_start= job->maxiumum_file_size+10;
-            temp->length = big_byte_counter;
-            fclose(file);
-            num_output_table++;
-            new_sst = create_new_sst_file(job, &num_output_table, &curr_file_index, dest_buffer, files, &file);
-            big_byte_counter = 0;
-            num_blocks =0;
 
+        dequeue(pq, &current);
+
+        
+        merge_data next_entry = next_key_block(&its[(int)current.index], c);
+        if (next_entry.key != NULL && strncmp(next_entry.key->entry, TOMB_STONE, next_entry.key->len)!=0) {
+            next_entry.index = current.index;
+            enqueue(pq, &next_entry);
         }
-        if (num_bytes + entry_len(&smallest) >=  GLOB_OPTS.BLOCK_INDEX_SIZE){
-            write_block_to_file(file, new_sst, dest_buffer, offset, &num_blocks, GLOB_OPTS.BLOCK_INDEX_SIZE);
-            offset = dest_buffer->read_pointer + num_blocks;
-            num_bytes = 0; 
-            big_byte_counter +=1;
+
+        
+        if (strncmp(current.key->entry, TOMB_STONE, current.key->len) != 0 && compare_time_stamp(its[(int)current.index].file->timestamp, its[(int)best_entry.index].file->timestamp) > 0) {
+            best_entry = current;
         }
-        if (big_byte_counter == 0){
-            sst_f_inf * temp =get_element(job->new_sst_files, num_output_table);
-            memcpy(temp->min, smallest.key, sizeof(smallest.key));
-        }
-        int new_bytes = write_entry(smallest.key, smallest.value, dest_buffer);
-        prev = smallest;
-        map_bit(smallest.key,new_sst->filter);
-        num_bytes+= new_bytes;
-        big_byte_counter += new_bytes;
-        prev = smallest;
-       //free(smallest);
-        prev_index = curr_index;
     }
-    if (big_byte_counter !=0){
-        write_block_to_file(file, new_sst, dest_buffer, offset, &num_blocks, GLOB_OPTS.BLOCK_INDEX_SIZE);
-        sst_f_inf * new_sst = get_element(job->new_sst_files, num_output_table);
-        new_sst->block_start= job->maxiumum_file_size+10;
-        new_sst->length = big_byte_counter;
-        memcpy(new_sst->max, prev.key, sizeof(prev.key));
-        reset_buffer(dest_buffer);
-        inset_at(job->new_sst_files, new_sst, num_output_table);
-        fseek(file, job->maxiumum_file_size+10, SEEK_SET);
-        for (int i = 0; i < num_blocks; i++){
-            block_index * block = (block_index*)get_element(new_sst->block_indexs, i);
-            block_to_stream(dest_buffer, block);
-        }
-        copy_filter(new_sst->filter, dest_buffer);
-        fwrite(dest_buffer->buffy, 1, dest_buffer->curr_bytes+1, file);
-        fclose(file);
-    }
-    for (int i = 0; i < num_sst; i++) {
-        free_ll(table_lists[i], NULL);
-        free_buffer(storage[i]);
-    }
-    free_front(pq);
+
+    return best_entry;
 }
+void complete_block(sst_f_inf * curr_sst, block_index * current_block, int block_b_count){
+    current_block->len =  block_b_count;
+    if (current_block->len <3 ) return;
+    build_index(curr_sst,current_block, NULL, current_block->num_keys,current_block->offset);
+    memset(current_block, 0, sizeof(*current_block));
+    *current_block = create_ind_stack(10 *(GLOB_OPTS.BLOCK_INDEX_SIZE/(4*1024)));
+}
+void reset_block_counters(int *block_b_count, int *sst_b_count, int *num_block_counter){
+    *block_b_count = 2;
+    *sst_b_count +=2;
+    *num_block_counter+=1;
+}
+int write_blocks_to_file(byte_buffer *dest_buffer, sst_f_inf* curr_sst, int *written_block_pointer, list * entrys, FILE *curr_file) {
+    int keys = 0;
+    int skipped = 0;
+    for (int i = *written_block_pointer; i < curr_sst->block_indexs->len; i++) {
+        block_index *ind = get_element(curr_sst->block_indexs, i);
+        int loc = dest_buffer->curr_bytes;
+        write_buffer(dest_buffer, (char*)&ind->num_keys, 2);
+        keys = dump_list_ele(entrys, &write_db_entry, dest_buffer, ind->num_keys, keys);
+        grab_min_b_key(ind, dest_buffer, loc);
+        int bytes_to_skip = GLOB_OPTS.BLOCK_INDEX_SIZE - (dest_buffer->curr_bytes - loc);
+        skipped += bytes_to_skip;
+        dest_buffer->curr_bytes += bytes_to_skip;
+        (*written_block_pointer)++;
+    }
+    fwrite(dest_buffer->buffy, dest_buffer->curr_bytes, 1, curr_file);
+    return skipped;
+}
+void process_sst(byte_buffer *dest_buffer, sst_f_inf *curr_sst, FILE *curr_file, compact_job*job, int sst_b_count) {
+    fseek(curr_file, curr_sst->block_start, SEEK_SET);
+    reset_buffer(dest_buffer);
+    block_index * b_0= get_element(curr_sst->block_indexs,0);
+    memcpy(curr_sst->min, b_0->min_key, 40);
+    for (int i = 0; i < curr_sst->block_indexs->len; i++) {
+        block_to_stream(dest_buffer, get_element(curr_sst->block_indexs, i));
+    }
+    copy_filter(curr_sst->filter, dest_buffer);
+    fwrite(dest_buffer->buffy, dest_buffer->curr_bytes, 1, curr_file);
+    fclose(curr_file);
+    reset_buffer(dest_buffer);
+    
+    curr_sst->length = sst_b_count;
+    grab_time_char(curr_sst->timestamp);
+    insert(job->new_sst_files, curr_sst);
+    memset(curr_sst, 0, sizeof(*curr_sst));
+}
+block_index init_block(arena * mem_store, size_t* off_track){
+    block_index current_block=  create_ind_stack(10 *(GLOB_OPTS.BLOCK_INDEX_SIZE/(4*1024)));
+    current_block.min_key = arena_alloc(mem_store, 40);
+    current_block.offset = *off_track;
+    *off_track += GLOB_OPTS.BLOCK_INDEX_SIZE;
+    return current_block;
+}
+
+
+/*min key copying screwed up*/
+void merge_tables(compact_infos** compact, byte_buffer *dest_buffer, compact_job * job, arena *a, cache * c) {
+    sst_iter its[20];
+    frontier *pq = Frontier(sizeof(merge_data), 0, &compare_merge_data);
+    list * entrys = List(0, sizeof(merge_data), false);
+    for (int i = 0; i < job->working_files; i++) {
+        init_sst_iter(&its[i], compact[i]->sst_file);
+        cache_entry *ce = retrieve_entry(c, its[i].cursor.index, compact[i]->sst_file->file_name);
+        its[i].cursor.arr = ce->ar;
+        merge_data first_entry = next_key_block(&its[i], c);
+        first_entry.index = i;
+        enqueue(pq, &first_entry);
+    }
+    // block counter determines when to write a block. num_block_counter counts the number of blocks, writing them
+    // all to file when its equal to the global setting. sst_b_count tracks ssts
+    int block_b_count =2;
+    int num_block_counter = 0;
+    int sst_b_count = 2;
+    int written_block_pointer = 0;
+   
+   
+   
+    size_t sst_offset_tracker = 0;
+    sst_f_inf  curr_sst= create_sst_empty();
+    curr_sst.block_start = job->maxiumum_file_size;
+    sprintf(curr_sst.file_name, "in_prog_sst_%zu_%zu", job->id + job->new_sst_files->len, job->end_level);
+
+    FILE * curr_file = fopen(curr_sst.file_name, "wb");
+
+    block_index current_block = init_block(curr_sst.mem_store, &sst_offset_tracker);
+    
+    db_unit last_key;
+  
+    /*weird edgecase with the block min key where it is not added until later*/
+    while (pq->queue->len > 0) {
+        merge_data current;
+        dequeue(pq, &current);
+
+      
+        merge_data next_entry = next_key_block(&its[(int)current.index], c);
+        if (next_entry.key != NULL) {
+            next_entry.index = current.index;
+            enqueue(pq, &next_entry);
+        }
+        merge_data best_entry = discard_same_keys(pq, its, c, current);
+        
+        if (strcmp (best_entry.key->entry,"key34")==0 ){
+            fprintf(stdout, "no\n");
+        }
+        
+        if (block_b_count + entry_len(best_entry) > GLOB_OPTS.BLOCK_INDEX_SIZE){
+            complete_block(&curr_sst, &current_block, block_b_count);
+            reset_block_counters(&block_b_count, &sst_b_count, &num_block_counter);
+            current_block = init_block(curr_sst.mem_store, &sst_offset_tracker); 
+            merge_data * this_block_max = get_last(entrys);
+            memcpy(curr_sst.max, this_block_max->key->entry, this_block_max->key->len); 
+        }
+        if (num_block_counter >= GLOB_OPTS.COMPACTOR_WRITE_SIZE  && num_block_counter > 0){
+            sst_b_count+= write_blocks_to_file(dest_buffer, &curr_sst, &written_block_pointer, entrys, curr_file);
+            reset_buffer(dest_buffer);
+            merge_data * last=  get_last(entrys);
+            last_key = *last->key;
+            entrys->len = 0; // to stop edgecase of max being null
+            num_block_counter = 0;
+        }
+        if (sst_b_count +  entry_len(best_entry)>= GLOB_OPTS.SST_TABLE_SIZE || (block_b_count == 0 && sst_offset_tracker == GLOB_OPTS.SST_TABLE_SIZE)){
+            
+            complete_block(&curr_sst, &current_block, block_b_count);
+            reset_block_counters(&block_b_count, &sst_b_count, &num_block_counter);
+            
+            write_blocks_to_file(dest_buffer, &curr_sst, &written_block_pointer, entrys, curr_file);
+           
+            merge_data *  max = get_last(entrys);
+            if (max == NULL){
+                memcpy(curr_sst.max, last_key.entry, last_key.len);
+            }
+            else{
+                memcpy(curr_sst.max, max->key->entry, max->key->len);
+            }
+            process_sst(dest_buffer, &curr_sst, curr_file, job, sst_b_count);
+            curr_sst = create_sst_empty();
+            curr_sst.block_start= job->maxiumum_file_size;
+           
+            block_b_count = 2;
+          
+            entrys->len = 0;
+            
+
+            num_block_counter = 0;
+            sst_b_count = 2;
+            sst_offset_tracker = 0;
+
+            sprintf(curr_sst.file_name, "in_prog_sst_%zu_%zu", job->id + job->new_sst_files->len, job->end_level);
+            curr_file = fopen(curr_sst.file_name, "wb");
+            written_block_pointer =0;
+            current_block = init_block(curr_sst.mem_store, &sst_offset_tracker);
+        }
+        if (best_entry.key!=NULL & best_entry.key->entry != NULL) {
+            insert(entrys, &best_entry);
+            current_block.num_keys ++;
+            map_bit(best_entry.key->entry, current_block.filter);
+            map_bit(best_entry.key->entry, curr_sst.filter);
+            int best_entry_bytes  = entry_len(best_entry);
+            block_b_count +=  best_entry_bytes;
+            sst_b_count += best_entry_bytes;
+        }
+    }
+    if (block_b_count > 0){
+        complete_block(&curr_sst, &current_block, block_b_count);
+        reset_block_counters(&block_b_count, &sst_b_count, &num_block_counter);
+    }
+  
+    if (entrys->len > 0) {
+            write_blocks_to_file(dest_buffer, &curr_sst, &written_block_pointer, entrys, curr_file);
+            merge_data * max = get_last(entrys);
+            memcpy(curr_sst.max, max->key->entry, max->key->len);
+            process_sst(dest_buffer, &curr_sst, curr_file, job, sst_b_count);
+
+    }
+  
+
+    free_front(pq);
+    free_list(entrys, NULL);
+}
+
 int calculate_overlap(char *min1, char *max1, char *min2, char *max2) {  
     if (min1 == NULL || max1 == NULL || min2 == NULL || max2 == NULL) 
         return -1;
@@ -507,7 +513,7 @@ static void compact_one_table(compact_manager * cm, size_t start_level,  size_t 
     job->maxiumum_file_size = GLOB_OPTS.SST_TABLE_SIZE; // CHANGE THIS AFTER TESTING
     job->id = index *targ_level  - index ;
     job->search_level = search_level;
-    merge_tables (compact, dest_buffer, job,a);
+    merge_tables (compact, dest_buffer, job,a, cm->c);
     job->status = COMPACTION_SUCCESS;
     integrate_new_tables(cm, job, indexs);
     free_list(indexs, NULL);

@@ -8,17 +8,19 @@
 #include "../ds/arena.h"
 #include "../util/alloc_util.h"
 #include "test_util_funcs.h"
+#include"../db/backend/key-value.h"
 #pragma once
 void certify_babybase(storage_engine * l) {
     const int size = 6000;
-    keyword_entry entry;
+    
     char expected_key[30];
     char expected_value[30];
     for (int i = 0; i < size; i++) {
-        char key[30] = {0};
-        char value[30] = {0};
-        entry.keyword = key;
-        entry.value = value;
+        db_unit k;
+        db_unit v;
+        
+        k.entry =expected_key;
+        v.entry = expected_value;
 
         if (i % 3 == 0) {
             sprintf(expected_key, "common%d", i / 3);
@@ -27,8 +29,9 @@ void certify_babybase(storage_engine * l) {
             sprintf(expected_key, "key%d", i);
             sprintf(expected_value, "value%d", i);
         }
-        char * v = read_record(l, expected_key);
-        TEST_ASSERT_EQUAL_STRING(expected_value, v);
+        
+        char * value = read_record(l, expected_key);
+        TEST_ASSERT_EQUAL_STRING(v.entry, value);
     }
     printf("Database certification passed successfully.\n");
 }
@@ -57,7 +60,7 @@ void test_merge_tables(void){
     job.new_sst_files = thread_safe_list(0,sizeof(sst_f_inf),false);
     job.id = 3;
     job.working_files= 2;
-    merge_tables(compact,dest_buffer ,&job, a);
+    merge_tables(compact,dest_buffer ,&job, a, l->cach);
     TEST_ASSERT_NOT_NULL(dest_buffer->buffy);
 
     
@@ -71,7 +74,7 @@ void test_merge_tables(void){
 void test_merge_one_table(void){
     create_a_babybase();
     storage_engine * l = create_engine("meta.bin", "bloom.bin");
-    compact_manager* cm = init_cm(l->meta);
+    compact_manager* cm = init_cm(l->meta, l->cach);
     compact_one_table(cm, 0,0,0,0);
     certify_babybase(l);
     free_engine(l,"meta.bin","bloom.bin");
@@ -81,7 +84,7 @@ void test_merge_one_table(void){
 void test_merge_0_to_empty_one(void){
     create_a_babybase();
     storage_engine * l = create_engine("meta.bin", "bloom.bin");
-    compact_manager* cm = init_cm(l->meta);
+    compact_manager* cm = init_cm(l->meta, l->cach);
     compact_one_table(cm, 0,0,1,0);
     certify_babybase(l);
     free_engine(l,"meta.bin","bloom.bin");
@@ -90,15 +93,17 @@ void test_merge_0_to_empty_one(void){
 void test_merge_0_to_filled_one(void){
     create_a_babybase();
     storage_engine * l = create_engine("meta.bin", "bloom.bin");
-    compact_manager* cm = init_cm(l->meta);
+    compact_manager* cm = init_cm(l->meta, l->cach);
     compact_one_table(cm, 0,0,1,0);
     certify_babybase(l);
     for (int i = 6000; i < 9000; i++) {
         char *key = (char*)wrapper_alloc(60, NULL, NULL);
         char *value = (char*)wrapper_alloc(60, NULL, NULL);
-        keyword_entry entry;
-        entry.keyword = key;
-        entry.value = value;
+        db_unit k;
+        db_unit v;
+        
+        k.entry =key;
+        v.entry = value;
         if (i % 3 == 0) {
             sprintf(key, "common%d", i / 3); 
             sprintf(value, "third_value%d", i / 3);
@@ -111,7 +116,9 @@ void test_merge_0_to_filled_one(void){
             sprintf(key, "key%d", i);
             sprintf(value, "value%d", i);
         }
-        write_record(l, &entry, strlen(entry.keyword) + strlen(entry.value));
+        k.len = strlen(k.entry) + 1;
+        v.len= strlen(v.entry)+1;
+        write_record(l, k,v);
         
     }
     lock_table(l);
@@ -125,20 +132,22 @@ void reset_engine(storage_engine ** l, compact_manager ** cm){
     free_engine(*l,"meta.bin","bloom.bin");
     free_cm(*cm);
     *l = create_engine("meta.bin", "bloom.bin");
-    *cm = init_cm((*l)->meta);
+    *cm = init_cm((*l)->meta, (*l)->cach);
 }
 void test_attempt_to_break_compactor(){
     create_a_babybase();
     storage_engine * l = create_engine("meta.bin", "bloom.bin");
-    compact_manager* cm = init_cm(l->meta);
+    compact_manager* cm = init_cm(l->meta, l->cach);
     compact_one_table(cm, 0,0,1,0);
     certify_babybase(l);
     for (int i = 6000; i < 9000; i++) {
         char *key = (char*)wrapper_alloc(60, NULL, NULL);
         char *value = (char*)wrapper_alloc(60, NULL, NULL);
-        keyword_entry entry;
-        entry.keyword = key;
-        entry.value = value;
+        db_unit k;
+        db_unit v;
+        
+        k.entry =key;
+        v.entry = value;
         if (i % 3 == 0) {
             sprintf(key, "common%d", i / 3); 
             sprintf(value, "third_value%d", i / 3);
@@ -151,7 +160,9 @@ void test_attempt_to_break_compactor(){
             sprintf(key, "key%d", i);
             sprintf(value, "value%d", i);
         }
-        write_record(l, &entry, strlen(entry.keyword) + strlen(entry.value));
+        k.len = strlen(k.entry)+ 1;
+        v.len= strlen(v.entry)+1;
+        write_record(l, k,v);
         
     }
     lock_table(l);

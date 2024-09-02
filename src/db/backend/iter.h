@@ -6,6 +6,7 @@
 #include "../../ds/associative_array.h"
 #include "../../ds/frontier.h"
 #include "../../ds/hashtbl.h"
+#define EODB 0
 #pragma once
 
 /* write a proper implementation plan*/
@@ -53,8 +54,8 @@ typedef struct aseDB_iter {
     cache * c;
 } aseDB_iter;
 typedef struct merge_data {
-    void * key;
-    void * value;
+    db_unit * key;
+    db_unit * value;
     char index;
     enum source src;
 }merge_data;
@@ -67,7 +68,7 @@ int compare_merge_data(const void * one, const void * two){
     if (one == NULL || two == NULL) return -5;
     const merge_data * m1 = one;
     const merge_data * m2 = two;
-    return strcmp(m1->key, m2->key);
+    return strcmp(m1->key->entry, m2->key->entry);
 }
 aseDB_iter * create_aseDB_iter(){
     aseDB_iter * dbi = malloc(sizeof(aseDB_iter));
@@ -135,12 +136,12 @@ merge_data next_entry(block_iter *b, cache * c, char * file_name) {
     if (b == NULL || b->arr == NULL || b->curr_key_ind >= b->arr->len) {
        return final;
     }
-    if (b->index->len!= b->arr->len){
+    if (b->index->num_keys!= b->arr->len){
         cache_entry * ce = retrieve_entry(c,b->index, file_name);
         b->arr = ce->ar;
     }
-    char * ret = b->arr->values[b->curr_key_ind];
-    char * key = b->arr->keys[b->curr_key_ind];
+    db_unit *ret = &b->arr->values[b->curr_key_ind];
+    db_unit *key = &b->arr->keys[b->curr_key_ind];
     final.key = key;
     final.value = ret;
     b->curr_key_ind++;
@@ -198,15 +199,15 @@ merge_data next_sst_block(level_iter *level, cache *c) {
 merge_data get_curr_kv(sst_iter  sst_it){
     block_iter  block_it = sst_it.cursor;
     merge_data ret;
-    ret.key = block_it.arr->keys[block_it.curr_key_ind];
-    ret.value = block_it.arr->values[block_it.curr_key_ind];
+    ret.key = &block_it.arr->keys[block_it.curr_key_ind];
+    ret.value = &block_it.arr->values[block_it.curr_key_ind];
     return ret;
 }
 merge_data next_entry_memtable(mem_table_iter * iter){
     iter->cursor = iter->cursor->forward[0];
     merge_data m;
-    m.key = iter->cursor->key.entry;
-    m.value = iter->cursor->value.entry;
+    m.key = &iter->cursor->key;
+    m.value =&iter->cursor->value;
     return m;
 }
 /*seeks a prefix in every table*/
@@ -256,8 +257,8 @@ void seek(aseDB_iter * iter , const char * prefix){
         if (seeked_next == NULL) continue;
         iter->mem_table[i].cursor = seeked_next;
         merge_data entry;
-        entry.key = seeked_next->key.entry;
-        entry.value = seeked_next->value.entry;
+        entry.key = &seeked_next->key;
+        entry.value = &seeked_next->value;
         entry.index = i;
         entry.src = memtable;
         enqueue(iter->pq, &entry);
@@ -275,7 +276,9 @@ levels. Think of a solution*/
 merge_data aseDB_iter_next(aseDB_iter * iter){
     merge_data next;
     merge_data next_grab;
-    merge_data dummy = {"EOTBL", "EOTBL", -1};
+     
+
+    merge_data dummy = {EODB,EODB, -1};
     int cmp_res = -1;
     do
     {
@@ -309,7 +312,7 @@ merge_data aseDB_iter_next(aseDB_iter * iter){
                 return dummy;
 
         }
-        if (next_grab.key == NULL || (last_element != NULL) && (strcmp(next_grab.key, last_element->key) == 0 && strcmp(next_grab.value, last_element->value)==0 )){
+        if (next_grab.key == NULL || (last_element != NULL) && (strcmp(next_grab.key->entry, last_element->key->entry) == 0 && strcmp(next_grab.value->entry, last_element->value->entry)==0 )){
             return next;
         }
         enqueue(iter->pq, &next_grab);
@@ -327,6 +330,16 @@ merge_data aseDB_iter_next(aseDB_iter * iter){
 
     merge_data* final= get_last(iter->ret);
     return (final != NULL) ? *final : dummy;
+}
+int write_db_entry(byte_buffer * b, void * element){
+    merge_data * m = element;
+    if (m->key == NULL || m->value == NULL){
+        return -1;
+    }
+    int size= 0;
+    size+= write_db_unit(b, *m->key);
+    size+= write_db_unit(b, *m->value);
+    return size;
 }
 void free_aseDB_iter(aseDB_iter *iter) {
     free_list(iter->l_0_sst_iters, NULL);

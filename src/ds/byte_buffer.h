@@ -89,7 +89,7 @@ int byte_buffer_transfer(byte_buffer * read_me, byte_buffer* write_me, size_t nu
 }
 void reset_buffer(void * v_buffer){
     byte_buffer * buffer = (byte_buffer*)v_buffer;
-    memset(buffer->buffy, 0, buffer->curr_bytes);
+    //memset(buffer->buffy, 0, buffer->curr_bytes);
     buffer->curr_bytes = 0;
     buffer->read_pointer = 0;
 }

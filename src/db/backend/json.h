@@ -152,31 +152,50 @@ int get_next_key(byte_buffer * buffer, char * store){
 int json_b_search(k_v_arr * json, const char * target){
     int max = json->len -1;
     int min = 0;
-    char ** keys = json->keys;
+    db_unit  * keys = json->keys;
     while(min <= max){
         int mid = (max + min) /2;
-        char * temp = keys[mid];
-        int cmp = strcmp(temp, target);
+        db_unit temp = keys[mid];
+        int cmp = strncmp(temp.entry, target, temp.len);
         if (cmp == 0) return mid;
         else if (cmp < 0) min = mid + 1;
         else max= mid-1;
     }
     return -1;
 }
-int prefix_b_search(k_v_arr * json, const char * target){
-    int max = json->len -1;
-    size_t min = 0;
-    char ** keys = json->keys;
-    size_t mid;
-    while(min <= max){
-        mid = (max + min) /2;
-        char * temp = keys[mid];
-        if (mid < 0 || max < 0) return mid;
-        int cmp = strcmp(temp, target);
-        if (cmp == 0) return mid;
-        else if (cmp < 0) min = mid + 1;
-        else max= mid-1;
+
+int prefix_b_search(k_v_arr *json, const char *target) {
+    int max = json->len - 1;
+    int min = 0;
+    db_unit *keys = json->keys;
+    int mid;
+    int result = 0;
+
+    while (min <= max) {
+        mid = (max + min) / 2;
+        db_unit temp = keys[mid];
+
+        int cmp = strncmp(temp.entry, target, strlen(target));
+
+        if (cmp == 0) {
+            result = mid;
+            max = mid - 1;
+        } 
+        else if (cmp < 0) {
+            min = mid + 1;
+        } 
+        else {
+            max = mid - 1;
+        }
     }
-    return mid;
+    if (result == -1) {
+        if (min < json->len && strncmp(keys[min].entry, target, strlen(target)) >= 0) {
+            return min;
+        }
+        return max;
+    }
+
+    return result;
 }
+
 #endif

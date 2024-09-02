@@ -60,11 +60,13 @@ typedef struct block_index{
     char *min_key;
     size_t len;
     size_t num_keys;
+    char * uuid;
+    
 } block_index;
 
 
 
-block_index * create_block_index(size_t est_num_keys);;
+block_index * create_block_index(size_t est_num_keys);
 void free_block_index(void * index);
 
 
@@ -81,12 +83,24 @@ sst_f_inf *  create_sst_file_info(char * file_name, size_t len, size_t num_word,
     strcpy(file->file_name, file_name);
     return file;
 }
+sst_f_inf create_sst_empty(){
+    sst_f_inf file;
+    file.block_indexs = List(0, sizeof(block_index), true);
+    file.mem_store = calloc_arena(100000);
+    file.length = 0;
+    file.block_start = -1;
+    file.filter = bloom(NUM_HASH_SST,2000, false, NULL);
+    grab_time_char(file.timestamp);
+    return file;
+
+}
 block_index * create_block_index(size_t est_num_keys){
     block_index * index = (block_index*)wrapper_alloc((sizeof(block_index)), NULL,NULL);
     index->filter = bloom(NUM_HASH_SST, est_num_keys, false, NULL);
     index->min_key = NULL;
     index->len = 0; 
     index->num_keys =0;
+    index->uuid = NULL;
     return index;
 }
 block_index create_ind_stack(size_t  est_num_keys){
@@ -95,12 +109,14 @@ block_index create_ind_stack(size_t  est_num_keys){
     index.min_key = NULL;
     index.len = 0; 
     index.num_keys  =0;
+    index.uuid =  NULL;
     return index;
 }
 block_index * block_from_stream(byte_buffer * stream, block_index * index){
     read_buffer(stream, &index->offset, sizeof(size_t));
     index->filter = from_stream(stream);
-    read_buffer(stream,index->min_key, 100);
+    read_buffer(stream,index->min_key, 40);
+    read_buffer(stream, index->uuid, 40);
     read_buffer(stream, &index->len, sizeof(size_t));
     read_buffer(stream, &index->num_keys, sizeof(index->num_keys));
     return index;
@@ -108,7 +124,8 @@ block_index * block_from_stream(byte_buffer * stream, block_index * index){
 void block_to_stream(byte_buffer * targ, block_index * index){
     write_buffer(targ, (char*)&index->offset, sizeof(size_t));
     copy_filter(index->filter, targ);
-    write_buffer(targ,index->min_key,100);
+    write_buffer(targ,index->min_key,40);
+    write_buffer(targ,index->uuid, 40);
     write_buffer(targ, (char*)&index->len, sizeof(size_t)); 
     write_buffer(targ, &index->num_keys, sizeof(&index->num_keys));
 }
@@ -124,7 +141,8 @@ void read_index_block(sst_f_inf * file, byte_buffer * stream)
     stream->read_pointer = 0;
     for (int i =0; i < file->block_indexs->len; i++){
         block_index * index = (block_index*)get_element(file->block_indexs, i);
-        index->min_key = (char*)arena_alloc(file->mem_store, 100);
+        index->min_key = (char*)arena_alloc(file->mem_store, 40);
+        index->uuid = (char*)arena_alloc(file->mem_store, 40);
         block_from_stream(stream, index);
     }
     file->filter = from_stream(stream);

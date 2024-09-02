@@ -164,25 +164,24 @@ char * disk_read(storage_engine * engine, const char * keyword){
     
     for (int i= 0; i < MAX_LEVELS; i++){
         if (engine->meta->sst_files[i] == NULL || engine->meta->sst_files[i]->len ==0) continue;
+
         list * sst_files_for_x = engine->meta->sst_files[i];
         size_t index_sst = find_sst_file(sst_files_for_x, sst_files_for_x->len, keyword);
         if (index_sst == -1) continue;
-
+        
         sst_f_inf * sst = get_element(sst_files_for_x, index_sst);
-       // bloom_filter * filter = get_element(engine->meta->filters, sst->filter_index);
+       
         bloom_filter * filter=  sst->filter;
         if (!check_bit(keyword,filter)) continue;
-        
+       
         size_t index_block= find_block(sst, keyword);
         block_index * index = get_element(sst->block_indexs, index_block);
-        if (strcmp("hello1151", keyword)==0){
-            fprintf(stdout,"no\n");
-        }
+        
         cache_entry * c = retrieve_entry(engine->cach, index, sst->file_name);
         int k_v_array_index = json_b_search(c->ar, keyword);
         if (k_v_array_index== -1) continue;
 
-        return  c->ar->values[k_v_array_index];    
+        return  c->ar->values[k_v_array_index].entry;    
     }
     return NULL;
 }
@@ -244,8 +243,9 @@ static void seralize_table(SkipList * list, byte_buffer * buffer, sst_f_inf * s)
     memcpy(&buffer->buffy[num_entry_loc], &num_entries, 2);
     build_index(s, &b,buffer, num_entries, num_entry_loc);
     memcpy(&s->max, last_entry.entry, last_entry.len);
-    grab_time(s->timestamp);
+    grab_time_char(s->timestamp);
 }
+
 void lock_table(storage_engine * engine){
    engine->table[CURRENT_TABLE]->immutable = true;
    swap(&engine->table[CURRENT_TABLE], &engine->table[PREV_TABLE],8);

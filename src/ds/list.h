@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include "hashtbl.h"
 #include <pthread.h>
+#include "byte_buffer.h"
+
 #ifndef LIST_H
 #define LIST_H
 #define rw_mutex pthread_rwlock_t
@@ -300,6 +302,14 @@ void shift_list(list * my_list){
 }
 void * get_last(list * my_list){
     return get_element(my_list, my_list->len -1);
+}
+int dump_list_ele(list * my_list, int(*item_write_func)( byte_buffer*, void*), byte_buffer * stream, int num, int start){
+    int loop_len = min(start+num, my_list->len);
+    for (int i = start; i < loop_len; i++){
+        (*item_write_func)(stream, get_element(my_list, i));
+    }
+    
+    return loop_len;
 }
 
 

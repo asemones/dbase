@@ -3,6 +3,7 @@
 #include "../ds/byte_buffer.h"
 #include "../ds/arena.h"
 #include "alloc_util.h"
+#include <uuid/uuid.h>
 
 #ifndef STRINGUTIL_H
 #define STRINGUTIL_H
@@ -155,6 +156,11 @@ bool C_strn_between(const char * s, const char * max, const char * min){
     int max_ccmp_char = strlen(s);
 
     return strncmp(s, min,max_ccmp_char) >=0 && strncmp(s,max, max_ccmp_char) <=0;
+}
+void grab_uuid(char * buffer){
+  uuid_t b;
+  uuid_generate(b);
+  uuid_unparse_lower(b, buffer);
 }
 
 

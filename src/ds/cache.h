@@ -6,7 +6,7 @@
 #include "structure_pool.h"
 #include "linkl.h"
 #include "associative_array.h"
-
+#define OVER_FLOW_EXTRA 100
 
 #pragma once
 
@@ -34,21 +34,21 @@ adding and removing nodes is done in a special fornat to remove excess memory al
 */
 cache * create_cache(size_t capacity, size_t page_size);
 void free_cache(cache * c);
-ll_node *  add_page(cache * c, FILE * f, char * min_key, size_t size);
-ll_node* get_page(cache * c, char * min_key);
-ll_node * get_node(cache * c, char * min_key);
+ll_node *  add_page(cache * c, FILE * f, char * uuid, size_t size);
+ll_node* get_page(cache * c, char * uuid);
+ll_node * get_node(cache * c, char * uuid);
 void evict(cache * c);
 size_t combine_values(size_t level, size_t sst_ind, size_t block_index);
 
 cache_entry* create_cache_entry(size_t page_s, size_t num_keys, arena * a) {
     cache_entry* entry = (cache_entry*)arena_alloc(a, sizeof(*entry));
   
-    entry->buf = create_buffer(page_s); 
+    entry->buf = create_buffer(page_s + OVER_FLOW_EXTRA); 
 
     entry->ar = arena_alloc(a, sizeof(k_v_arr));
    
-    entry->ar->keys = (char**)arena_alloc(a,num_keys * sizeof(char*));
-    entry->ar->values = (char**)arena_alloc(a,num_keys * sizeof(char*));
+    entry->ar->keys = arena_alloc(a,num_keys * sizeof(db_unit));
+    entry->ar->values = arena_alloc(a,num_keys * sizeof(db_unit));
     
 
     entry->ar->cap = num_keys;
@@ -105,8 +105,8 @@ void evict(cache * c){
     c->filled_pages--;
 }
 
-ll_node * add_page(cache * c, FILE * f, char * min_key, size_t size) {
-    ll_node * node = get_v(c->map, min_key);
+ll_node * add_page(cache * c, FILE * f, char * uuid, size_t size) {
+    ll_node * node = get_v(c->map, uuid);
     
     if (c->filled_pages == c->max_pages) {
         evict(c);
@@ -131,8 +131,10 @@ ll_node * add_page(cache * c, FILE * f, char * min_key, size_t size) {
     byte_buffer * buffer = entry->buf;
 
     buffer->curr_bytes = fread(buffer->buffy, 1, size, f);
-    buffer->utility_ptr = min_key;
-    add_kv(c->map, (void*)min_key, (void*)page);
+    int uuid_len =  strlen(uuid)+1;
+    memcpy(&buffer->buffy[buffer->max_bytes-uuid_len],uuid, uuid_len);
+    buffer->utility_ptr = &buffer->buffy[buffer->max_bytes-uuid_len];
+    add_kv(c->map, (void*)buffer->utility_ptr, (void*)page);
     c->filled_pages++;
 
     if (c->head->next == NULL) {
@@ -148,11 +150,11 @@ ll_node * add_page(cache * c, FILE * f, char * min_key, size_t size) {
 
     return c->tail;  
 }
-ll_node* get_page(cache * c,char * min_key){
-    return (ll_node*)get_v(c->map, min_key);
+ll_node* get_page(cache * c,char * uuid){
+    return (ll_node*)get_v(c->map, uuid);
 }
 cache_entry *retrieve_entry(cache * cach, block_index * index, char * file_name){
-    ll_node * page = get_page(cach, index->min_key);
+    ll_node * page = get_page(cach, index->uuid);
         cache_entry * c;
         if (page){
             c = page->data;
@@ -160,7 +162,7 @@ cache_entry *retrieve_entry(cache * cach, block_index * index, char * file_name)
         else {
             FILE * sst_file = fopen(file_name,"rb");
             fseek(sst_file, index->offset, SEEK_SET);
-            ll_node * fresh_page = add_page(cach, sst_file, index->min_key, index->len);
+            ll_node * fresh_page = add_page(cach, sst_file, index->uuid, index->len);
             c = fresh_page->data;
             load_block_into_into_ds(c->buf,c->ar,&into_array);
             fclose(sst_file);

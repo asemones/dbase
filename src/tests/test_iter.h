@@ -79,8 +79,8 @@ void test_full_table_scan_messy(){
     aseDB_iter * it=  create_aseDB_iter();
     init_aseDB_iter(it,s);
     seek(it, "c");
-    for(merge_data next = aseDB_iter_next(it); next.key< EODB ;next = aseDB_iter_next(it)){
-        if (next.index == -1){
+    for(merge_data next = aseDB_iter_next(it); ;next = aseDB_iter_next(it)){
+        if (next.key== EODB){
             break;
         }
         fprintf(stdout,"%s\n", next.value->entry);

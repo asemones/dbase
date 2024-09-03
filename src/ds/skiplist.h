@@ -21,6 +21,8 @@ typedef struct SkipList {
 } SkipList;
 db_unit dummy = {0, NULL};
 
+void insert_list(SkipList* list, db_unit key, db_unit value);
+
 Node* createNode(int level, db_unit key, db_unit value) {
     Node* node = (Node*)malloc(sizeof(Node) + level * sizeof(Node*));
     node->key = key;
@@ -46,6 +48,18 @@ int randomLevel() {
         level++;
     }
     return level;
+}
+int skip_from_stream(SkipList * s, byte_buffer * stream){
+    int ret= 0;
+    while (stream->read_pointer < stream->curr_bytes){
+        db_unit key, value;
+        read_buffer(stream, &key.len, sizeof(key.len));
+        read_buffer(stream, key.entry, key.len);
+        read_buffer(stream, &value.len, sizeof(key.len) );
+        read_buffer(stream, value.entry,value.len);
+        insert_list(s, key, value);
+        ret = 4+ value.len + key.len;
+    }
 }
 
 void insert_list(SkipList* list, db_unit key, db_unit value) {

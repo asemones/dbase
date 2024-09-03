@@ -40,7 +40,7 @@ static void read_sst_list(list * sst_files, byte_buffer * tempBuffer, size_t num
    for (int i = 0; i < sst_files->len; i++){
         size_t block_ind_len = 0;
         if (i +1 ==  sst_files->cap) expand(sst_files);
-        sst_f_inf * sst = (sst_f_inf*)get_element(sst_files,i);
+        sst_f_inf * sst = (sst_f_inf*)at(sst_files,i);
         read_buffer(tempBuffer, sst->file_name, strlen(&tempBuffer->buffy[tempBuffer->read_pointer])+1);
         read_buffer(tempBuffer, &sst->length, sizeof(size_t));
         read_buffer(tempBuffer, sst->max, MIN_KEY_SIZE);
@@ -55,7 +55,7 @@ static void read_sst_list(list * sst_files, byte_buffer * tempBuffer, size_t num
     }
     byte_buffer * small_buff = create_buffer(30 * 1024);
     for (int i = 0 ;i < num_sst; i++){
-        sst_f_inf * sst = (sst_f_inf*)get_element(sst_files,i);
+        sst_f_inf * sst = (sst_f_inf*)at(sst_files,i);
         read_index_block(sst, small_buff);
 
     }
@@ -119,7 +119,7 @@ meta_data * load_meta_data(char * file, char * bloom_file){
 }
 static void dump_sst_list(list * sst_files, FILE * f){
     for (int i = 0; i < sst_files->len; i++){
-        sst_f_inf * sst = get_element(sst_files,i);
+        sst_f_inf * sst = at(sst_files,i);
         fwrite(sst->file_name, 1,strlen(sst->file_name)+1,f);
         fwrite(&sst->length, 1,sizeof(size_t),f);
         fwrite(sst->max, 1, MIN_KEY_SIZE, f);

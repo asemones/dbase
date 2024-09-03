@@ -87,7 +87,7 @@ void remove_at(list *my_list, int index);
  * @param index The index of the element to be retrieved.
  * @return A pointer to the element at the specified index, or NULL if the index is invalid.
  */
-void* get_element(list *my_list, int index);
+void* at(list *my_list, int index);
 
 /**
  * @brief Compares the keys of two kv structures.
@@ -187,7 +187,7 @@ void inset_at(list * my_list, void * element, int index){
         expand(my_list);
     }
     void * temp;
-    if ((temp= get_element(my_list,index)) !=  NULL){
+    if ((temp= at(my_list,index)) !=  NULL){
         my_list->len--;
     }
     //if (my_list->thread_safe) w_lock(&my_list->lock);
@@ -202,7 +202,7 @@ void free_list(list * my_list, void (*free_func)(void*)){
    }
    //if(my_list->thread_safe) w_lock(&my_list->lock);
    for (int i = 0; i < my_list->cap ;i++ ){
-        char **temp = (char**)get_element(my_list, i);
+        char **temp = (char**)at(my_list, i);
         if (temp == NULL || my_list->isAlloc==false ) continue;
         if (free_func == NULL)free(*temp);
         else (*free_func)(temp);
@@ -225,13 +225,13 @@ void remove_at(list *my_list, int index) {
     my_list->len--;
 }
 void remove_no_shift(list *my_list, int index, void (*free_func)(void*)){
-    void * element = get_element(my_list, index);
+    void * element = at(my_list, index);
     if (element == NULL) return;
     if (free_func != NULL) (*free_func)(element);
     else if (my_list->isAlloc) free(element);
     element = NULL;
 }
-void * get_element(list *my_list, int index){
+void * at(list *my_list, int index){
     if (my_list == NULL || index < 0 || index >= my_list->len) {
         return NULL;
     }
@@ -267,8 +267,8 @@ void sort_list(list *my_list, bool ascending, compare func){
         if (ascending){
             for (int i = 1; i < my_list->len; i++){
                 int j = i;
-                while( j > 0 && func(get_element(my_list, j), get_element(my_list,j-1)) < 0){
-                    swap(get_element(my_list, j), get_element(my_list,j-1), my_list->dtS);
+                while( j > 0 && func(at(my_list, j), at(my_list,j-1)) < 0){
+                    swap(at(my_list, j), at(my_list,j-1), my_list->dtS);
                     j--;
                 }
             }
@@ -276,8 +276,8 @@ void sort_list(list *my_list, bool ascending, compare func){
         else{
             for (int i = 1; i < my_list->len; i++){
                 int j = i;
-                while( j > 0 && func(get_element(my_list, j), get_element(my_list,j-1)) > 0){
-                    swap(get_element(my_list, j), get_element(my_list,j-1), my_list->dtS);
+                while( j > 0 && func(at(my_list, j), at(my_list,j-1)) > 0){
+                    swap(at(my_list, j), at(my_list,j-1), my_list->dtS);
                     j--;
                 }
             }
@@ -288,7 +288,7 @@ void sort_list(list *my_list, bool ascending, compare func){
 bool check_in_list(list * my_list, void * element, bool(*func)(void*, void*)){
     if (my_list == NULL || element == NULL) return false;
     for (int i = 0; i < my_list->len; i++){
-        if (func(get_element(my_list, i), element) == 0) return true;
+        if (func(at(my_list, i), element) == 0) return true;
     }
     return false;
 }
@@ -301,16 +301,17 @@ void shift_list(list * my_list){
     }
 }
 void * get_last(list * my_list){
-    return get_element(my_list, my_list->len -1);
+    return at(my_list, my_list->len -1);
 }
 int dump_list_ele(list * my_list, int(*item_write_func)( byte_buffer*, void*), byte_buffer * stream, int num, int start){
     int loop_len = min(start+num, my_list->len);
     for (int i = start; i < loop_len; i++){
-        (*item_write_func)(stream, get_element(my_list, i));
+        (*item_write_func)(stream, at(my_list, i));
     }
     
     return loop_len;
 }
+
 
 
 #endif

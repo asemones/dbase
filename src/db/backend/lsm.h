@@ -121,7 +121,7 @@ size_t find_sst_file(list  *sst_files, size_t num_files, const char *key) {
 
     while (min_index < max_index) {
         middle_index = min_index + (max_index - min_index) / 2;
-        sst_f_inf *sst = get_element(sst_files, middle_index);
+        sst_f_inf *sst = at(sst_files, middle_index);
         if (strcmp(key, sst->min) >= 0 && strcmp(key, sst->max) <= 0) {
             return middle_index;
         } 
@@ -141,8 +141,8 @@ size_t find_block(sst_f_inf *sst, const char *key) {
     int mid = 0;
     while (left <= right) {
         mid = left + (right - left) / 2;
-        block_index *index = get_element(sst->block_indexs, mid);
-        block_index *next_index = get_element(sst->block_indexs, mid + 1);
+        block_index *index = at(sst->block_indexs, mid);
+        block_index *next_index = at(sst->block_indexs, mid + 1);
 
         if (next_index == NULL || (strcmp(key, index->min_key) >= 0 && strcmp(key, next_index->min_key) < 0)) {
             return mid;
@@ -169,13 +169,13 @@ char * disk_read(storage_engine * engine, const char * keyword){
         size_t index_sst = find_sst_file(sst_files_for_x, sst_files_for_x->len, keyword);
         if (index_sst == -1) continue;
         
-        sst_f_inf * sst = get_element(sst_files_for_x, index_sst);
+        sst_f_inf * sst = at(sst_files_for_x, index_sst);
        
         bloom_filter * filter=  sst->filter;
         if (!check_bit(keyword,filter)) continue;
        
         size_t index_block= find_block(sst, keyword);
-        block_index * index = get_element(sst->block_indexs, index_block);
+        block_index * index = at(sst->block_indexs, index_block);
         
         cache_entry * c = retrieve_entry(engine->cach, index, sst->file_name);
         int k_v_array_index = json_b_search(c->ar, keyword);
@@ -257,12 +257,12 @@ static int flush_table(storage_engine * engine){
     byte_buffer * buffer = request_struct(engine->write_pool);
     meta_data * meta = engine->meta;
     meta->sst_files[0]->len++;
-    sst_f_inf* sst = get_element(meta->sst_files[0], meta->num_sst_file); 
+    sst_f_inf* sst = at(meta->sst_files[0], meta->num_sst_file); 
     if (sst == NULL){
         meta->sst_files[0]->len --;
         sst = create_sst_file_info(NULL, 0, NUM_WORD, table->filter);
         insert(meta->sst_files[0],sst);
-        sst = get_element(meta->sst_files[0], meta->sst_files[0]->len-1);
+        sst = at(meta->sst_files[0], meta->sst_files[0]->len-1);
     }
     else{
         sst->mem_store = calloc_arena(4096);

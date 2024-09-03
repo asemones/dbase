@@ -40,7 +40,7 @@ void test_use_and_load(void){
 
 
     for(size_t i = 0; i < 100; i++){
-        sst_f_inf * sst = (sst_f_inf*)get_element(meta->sst_files[0], i);
+        sst_f_inf * sst = (sst_f_inf*)at(meta->sst_files[0], i);
         TEST_ASSERT_NOT_NULL(sst);
     }
     destroy_meta_data ("meta.bin", "bloom.bin", meta);

@@ -75,7 +75,7 @@ void init_block_iter(block_iter *b_cursor, block_index *file) {
 void init_sst_iter(sst_iter * cursor, sst_f_inf* level) {
     cursor->curr_index = 0;
     cursor->file = level;
-    block_index * first = get_element(cursor->file->block_indexs, 0);
+    block_index * first = at(cursor->file->block_indexs, 0);
     if (first == NULL){
         cursor->file = NULL;
     }
@@ -95,7 +95,7 @@ void init_level_iters(level_iter *level_iters, storage_engine *s, size_t num_lev
             level_iters[i].curr_index = -1;
             continue;
         }
-        sst_f_inf * f = get_element(level_iters[i].level, 0);
+        sst_f_inf * f = at(level_iters[i].level, 0);
         if (f == NULL) continue;
         init_sst_iter(&level_iters[i].cursor,f);
     }
@@ -103,7 +103,7 @@ void init_level_iters(level_iter *level_iters, storage_engine *s, size_t num_lev
 void init_level_0_sst_iters(list *l_0_sst_iters, storage_engine *s) {
     for (int i = 0; i < s->meta->sst_files[0]->len; i++) {
         sst_iter cursor;
-        sst_f_inf* file = get_element(s->meta->sst_files[0], i);
+        sst_f_inf* file = at(s->meta->sst_files[0], i);
         if (file == NULL){
             l_0_sst_iters->len --;
             continue;
@@ -151,7 +151,7 @@ merge_data next_key_block(sst_iter *sst, cache *c) {
         if (sst->curr_index >= sst->file->block_indexs->len) {
             return bad_return;
         }
-        block_index *index = get_element(sst->file->block_indexs, sst->curr_index);
+        block_index *index = at(sst->file->block_indexs, sst->curr_index);
         if (index == NULL) {
             return bad_return;
         }
@@ -178,12 +178,12 @@ merge_data next_sst_block(level_iter *level, cache *c) {
     if (level->curr_index >= level->level->len) {
         return bad_return;
     }
-    sst_f_inf *f = get_element(level->level, level->curr_index);
+    sst_f_inf *f = at(level->level, level->curr_index);
     if (f == NULL) return bad_return;
      
     level->cursor.file = f;
     level->cursor.curr_index = 0;
-    block_index * next_block= get_element(level->cursor.file->block_indexs,0);
+    block_index * next_block= at(level->cursor.file->block_indexs,0);
     init_block_iter(&level->cursor.cursor,next_block);
     return next_key_block(&level->cursor, c);
 }
@@ -206,7 +206,7 @@ void seek_sst(sst_iter* sst_it, cache * cache, const char * prefix){
         sst_f_inf * f = sst_it->file;
         size_t b_index = find_block(f, prefix);
         sst_it->curr_index = b_index;
-        block_index * entry = get_element(f->block_indexs, b_index);
+        block_index * entry = at(f->block_indexs, b_index);
         sst_it->cursor.index = entry;
         cache_entry * c = retrieve_entry(cache, sst_it->cursor.index, f->file_name);
         int k_v_array_index = prefix_b_search(c->ar,prefix);
@@ -218,7 +218,7 @@ void seek(aseDB_iter * iter , const char * prefix){
     cache * cach = iter->c;
     for(int i = 0; i < 6; i++){
         size_t f_index =  find_sst_file(iter->l_1_n_level_iters[i].level, iter->l_1_n_level_iters[i].level->len,prefix);
-        sst_f_inf * f = get_element(iter->l_1_n_level_iters[i].level, f_index);
+        sst_f_inf * f = at(iter->l_1_n_level_iters[i].level, f_index);
         if (f == NULL)continue;
         iter->l_1_n_level_iters[i].cursor.file = f;
         iter->l_1_n_level_iters[i].curr_index = f_index;
@@ -230,7 +230,7 @@ void seek(aseDB_iter * iter , const char * prefix){
         iter->l_1_n_level_iters[i].cursor.cursor.curr_key_ind ++;
     }
      for (int i = 0; i < iter->l_0_sst_iters->len; i++){
-        sst_iter *sst_it = get_element(iter->l_0_sst_iters, i);
+        sst_iter *sst_it = at(iter->l_0_sst_iters, i);
         if(sst_it->file== NULL) continue;
         seek_sst(sst_it, cach, prefix);
         merge_data merge = get_curr_kv(*sst_it);
@@ -282,7 +282,7 @@ merge_data aseDB_iter_next(aseDB_iter * iter){
 
         switch (next.src){
             case (int)lvl_0:
-                old_sst_src  = get_element(iter->l_0_sst_iters,next.index);
+                old_sst_src  = at(iter->l_0_sst_iters,next.index);
                 next_grab =  next_key_block(old_sst_src, iter->c);
                 next_grab.index = next.index;
                 next_grab.src = lvl_0;

@@ -15,6 +15,7 @@
 #include "test_iter.h"
 #include "testlru.h"
 #include "test_iter.h"
+#include "testwal.h"
 
 
 
@@ -38,8 +39,8 @@ int main(void) {
     RUN_TEST(test_insert_at_invalid_index);
     RUN_TEST(test_remove_from_NULL_list);
     RUN_TEST(test_remove_at_invalid_index);
-    RUN_TEST(test_get_element_from_NULL_list);
-    RUN_TEST(test_get_element_at_invalid_index);
+    RUN_TEST(test_at_from_NULL_list);
+    RUN_TEST(test_at_at_invalid_index);
     RUN_TEST(test_sortList_ascending);
     RUN_TEST(test_sortList_descending);
     RUN_TEST(test_sortList_empty);
@@ -103,5 +104,7 @@ int main(void) {
     RUN_TEST(test_next);
     RUN_TEST(test_run_scan);
     RUN_TEST(test_full_table_scan_messy);
+    fprintf(stderr, "RUNNING WAL TESTS\n");
+    RUN_TEST(test_wal_init);
     return UNITY_END();
 }

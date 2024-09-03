@@ -1,18 +1,17 @@
 # Summary
 
-Date : 2024-08-23 02:30:57
+Date : 2024-09-02 19:43:32
 
 Directory /home/asemones/Documents/personal_code/dbase
 
-Total : 44 files,  4701 codes, 458 comments, 633 blanks, all 5792 lines
+Total : 47 files,  5077 codes, 473 comments, 713 blanks, all 6263 lines
 
 Summary / [Details](details.md) / [Diff Summary](diff.md) / [Diff Details](diff-details.md)
 
 ## Languages
 | language | files | code | comment | blank | total |
 | :--- | ---: | ---: | ---: | ---: | ---: |
-| C++ | 39 | 4,418 | 445 | 585 | 5,448 |
-| C | 2 | 245 | 5 | 33 | 283 |
+| C | 44 | 5,039 | 465 | 698 | 6,202 |
 | Makefile | 1 | 29 | 8 | 10 | 47 |
 | Markdown | 1 | 8 | 0 | 5 | 13 |
 | CMake | 1 | 1 | 0 | 0 | 1 |
@@ -20,17 +19,17 @@ Summary / [Details](details.md) / [Diff Summary](diff.md) / [Diff Details](diff-
 ## Directories
 | path | files | code | comment | blank | total |
 | :--- | ---: | ---: | ---: | ---: | ---: |
-| . | 44 | 4,701 | 458 | 633 | 5,792 |
+| . | 47 | 5,077 | 473 | 713 | 6,263 |
 | . (Files) | 2 | 37 | 8 | 15 | 60 |
-| src | 42 | 4,664 | 450 | 618 | 5,732 |
-| src/db | 11 | 1,849 | 120 | 203 | 2,172 |
-| src/db/backend | 11 | 1,849 | 120 | 203 | 2,172 |
-| src/db/backend (Files) | 10 | 1,686 | 111 | 187 | 1,984 |
-| src/db/backend/dal | 1 | 163 | 9 | 16 | 188 |
-| src/ds | 13 | 1,463 | 240 | 189 | 1,892 |
-| src/tests | 14 | 1,158 | 25 | 193 | 1,376 |
-| src/tests (Files) | 13 | 1,157 | 25 | 193 | 1,375 |
+| src | 45 | 5,040 | 465 | 698 | 6,203 |
+| src/db | 13 | 2,078 | 136 | 252 | 2,466 |
+| src/db/backend | 13 | 2,078 | 136 | 252 | 2,466 |
+| src/db/backend (Files) | 12 | 1,916 | 127 | 236 | 2,279 |
+| src/db/backend/dal | 1 | 162 | 9 | 16 | 187 |
+| src/ds | 12 | 1,457 | 241 | 177 | 1,875 |
+| src/tests | 16 | 1,303 | 23 | 236 | 1,562 |
+| src/tests (Files) | 15 | 1,302 | 23 | 236 | 1,561 |
 | src/tests/unity | 1 | 1 | 0 | 0 | 1 |
-| src/util | 4 | 194 | 65 | 33 | 292 |
+| src/util | 4 | 202 | 65 | 33 | 300 |
 
 Summary / [Details](details.md) / [Diff Summary](diff.md) / [Diff Details](diff-details.md)

@@ -44,7 +44,7 @@ void test_merge_tables(void){
    
     for (int i = 0; i < 2; i++){
        compact[i]= (compact_infos*)wrapper_alloc((sizeof(compact_infos)), NULL,NULL);
-       compact[i]->sst_file = get_element(l->meta->sst_files[0], i);
+       compact[i]->sst_file = at(l->meta->sst_files[0], i);
        compact[i]->complete = false;
        compact[i]->buffer = create_buffer(100000);
 

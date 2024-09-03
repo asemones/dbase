@@ -28,7 +28,7 @@ void test_list_expansions(){
     TEST_ASSERT_EQUAL_INT(10000, myList->len);
     TEST_ASSERT_EQUAL_INT(16384, myList->cap);
     for (int i = 0; i < 10000; i++){
-         TEST_ASSERT_EQUAL_INT(i ,*(*((int**)get_element(myList, i))));
+         TEST_ASSERT_EQUAL_INT(i ,*(*((int**)at(myList, i))));
     }
     free_list(myList, NULL);
 }
@@ -42,11 +42,11 @@ void test_insert_elements() {
     insert(myList, &str2);
     insert(myList, &str3);
     TEST_ASSERT_EQUAL_INT(3, myList->len);
-    char **element = (char **)get_element(myList, 0);
+    char **element = (char **)at(myList, 0);
     TEST_ASSERT_EQUAL_STRING("Hello", *element);
-    element = (char **)get_element(myList, 1);
+    element = (char **)at(myList, 1);
     TEST_ASSERT_EQUAL_STRING("World", *element);
-    element = (char **)get_element(myList, 2);
+    element = (char **)at(myList, 2);
     TEST_ASSERT_EQUAL_STRING("Test", *element);
     free_list(myList, NULL);
 }
@@ -62,9 +62,9 @@ void test_insert_at_specific_index() {
     insert(myList, &str3);
     inset_at(myList, &str4, 2);
     TEST_ASSERT_EQUAL_INT(3, myList->len);
-    char **element = (char **)get_element(myList, 2);
+    char **element = (char **)at(myList, 2);
     TEST_ASSERT_EQUAL_STRING("Insert", *element);
-    element = (char **)get_element(myList, 3);
+    element = (char **)at(myList, 3);
     TEST_ASSERT_NULL(element);
     free_list(myList, NULL);
 }
@@ -79,7 +79,7 @@ void test_remove_element_at_specific_index() {
     insert(myList, &str3);
     remove_at(myList, 1);
     TEST_ASSERT_EQUAL_INT(2, myList->len);
-    char **element = (char **)get_element(myList, 1);
+    char **element = (char **)at(myList, 1);
     TEST_ASSERT_EQUAL_STRING("Test", *element);;
     free_list(myList, NULL);
 }
@@ -92,11 +92,11 @@ void test_access_elements() {
     insert(myList, &str1);
     insert(myList, &str2);
     insert(myList, &str3);
-    char **element = (char **)get_element(myList, 0);
+    char **element = (char **)at(myList, 0);
     TEST_ASSERT_EQUAL_STRING("Hello", *element);
-    element = (char **)get_element(myList, 1);
+    element = (char **)at(myList, 1);
     TEST_ASSERT_EQUAL_STRING("World", *element);
-    element = (char **)get_element(myList, 2);
+    element = (char **)at(myList, 2);
     TEST_ASSERT_EQUAL_STRING("Test", *element);
     free_list(myList, NULL);
 }
@@ -161,18 +161,18 @@ void test_remove_at_invalid_index() {
     TEST_PASS_MESSAGE("Handled remove at invalid index");
 }
 
-void test_get_element_from_NULL_list() {
+void test_at_from_NULL_list() {
     list *myList = NULL;
-    void *element = get_element(myList, 2);
+    void *element = at(myList, 2);
     TEST_ASSERT_NULL(element);
     TEST_PASS_MESSAGE("Handled get element from NULL list");
 }
 
-void test_get_element_at_invalid_index() {
+void test_at_at_invalid_index() {
     list *myList = List(0, sizeof(char *),true);
-    void *element = get_element(myList, -1); 
+    void *element = at(myList, -1); 
     TEST_ASSERT_NULL(element);
-    element = get_element(myList, 100); 
+    element = at(myList, 100); 
     TEST_ASSERT_NULL(element);
     free_list(myList, NULL);
     TEST_PASS_MESSAGE("Handled get element at invalid index");
@@ -181,18 +181,18 @@ void test_sortList_ascending(void) {
     kv items[] = { { .key = "b" }, { .key = "a" }, { .key = "c" } };
     list myList = { .arr = items, .len = 3, .cap = 3, .dtS = sizeof(kv) };
     sort_list(&myList, true, compare_values_by_key);
-    TEST_ASSERT_EQUAL_STRING("a", ((kv*)get_element(&myList, 0))->key);
-    TEST_ASSERT_EQUAL_STRING("b", ((kv*)get_element(&myList, 1))->key);
-    TEST_ASSERT_EQUAL_STRING("c", ((kv*)get_element(&myList, 2))->key);
+    TEST_ASSERT_EQUAL_STRING("a", ((kv*)at(&myList, 0))->key);
+    TEST_ASSERT_EQUAL_STRING("b", ((kv*)at(&myList, 1))->key);
+    TEST_ASSERT_EQUAL_STRING("c", ((kv*)at(&myList, 2))->key);
 }
 
 void test_sortList_descending(void) {
     kv items[] = { { .key = "b" }, { .key = "a" }, { .key = "c" } };
     list myList = { .arr = items, .len = 3, .cap = 3, .dtS = sizeof(kv) };
     sort_list(&myList, false, compare_values_by_key);
-    TEST_ASSERT_EQUAL_STRING("c", ((kv*)get_element(&myList, 0))->key);
-    TEST_ASSERT_EQUAL_STRING("b", ((kv*)get_element(&myList, 1))->key);
-    TEST_ASSERT_EQUAL_STRING("a", ((kv*)get_element(&myList, 2))->key);
+    TEST_ASSERT_EQUAL_STRING("c", ((kv*)at(&myList, 0))->key);
+    TEST_ASSERT_EQUAL_STRING("b", ((kv*)at(&myList, 1))->key);
+    TEST_ASSERT_EQUAL_STRING("a", ((kv*)at(&myList, 2))->key);
 }
 void test_sortList_empty(void) {
     list myList = { .arr = NULL, .len = 0, .cap = 0, .dtS = sizeof(kv) };

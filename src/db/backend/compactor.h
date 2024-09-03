@@ -231,7 +231,7 @@ int write_blocks_to_file(byte_buffer *dest_buffer, sst_f_inf* curr_sst, int *wri
     int keys = 0;
     int skipped = 0;
     for (int i = *written_block_pointer; i < curr_sst->block_indexs->len; i++) {
-        block_index *ind = get_element(curr_sst->block_indexs, i);
+        block_index *ind = at(curr_sst->block_indexs, i);
         int loc = dest_buffer->curr_bytes;
         write_buffer(dest_buffer, (char*)&ind->num_keys, 2);
         keys = dump_list_ele(entrys, &write_db_entry, dest_buffer, ind->num_keys, keys);
@@ -247,10 +247,10 @@ int write_blocks_to_file(byte_buffer *dest_buffer, sst_f_inf* curr_sst, int *wri
 void process_sst(byte_buffer *dest_buffer, sst_f_inf *curr_sst, FILE *curr_file, compact_job*job, int sst_b_count) {
     fseek(curr_file, curr_sst->block_start, SEEK_SET);
     reset_buffer(dest_buffer);
-    block_index * b_0= get_element(curr_sst->block_indexs,0);
+    block_index * b_0= at(curr_sst->block_indexs,0);
     memcpy(curr_sst->min, b_0->min_key, 40);
     for (int i = 0; i < curr_sst->block_indexs->len; i++) {
-        block_to_stream(dest_buffer, get_element(curr_sst->block_indexs, i));
+        block_to_stream(dest_buffer, at(curr_sst->block_indexs, i));
     }
     copy_filter(curr_sst->filter, dest_buffer);
     fwrite(dest_buffer->buffy, dest_buffer->curr_bytes, 1, curr_file);
@@ -411,7 +411,7 @@ size_t find_compact_friend(size_t curr_level, size_t start_level, char * min, ch
     if (next_level == NULL) return -1;
     for (size_t i = 0 ; i < next_level->len; i++){
         if (curr_level == start_level && i == victim_index) continue;
-        sst_f_inf * sst = get_element(next_level, i);
+        sst_f_inf * sst = at(next_level, i);
         if (sst == NULL) continue;
         int score = calculate_overlap(min,max,sst->min,sst->max);
         if (score == 0) insert(indexes, (void*)&i); 
@@ -435,7 +435,7 @@ static void reset_ci(void * ci){
 static void compact_one_table(compact_manager * cm, size_t start_level,  size_t search_level, size_t targ_level, size_t index){
     list *start_lvl = cm->sst_files[start_level];
     list * target_lvl = cm->sst_files[targ_level];
-    sst_f_inf * victim = get_element(cm->sst_files[start_level],index);
+    sst_f_inf * victim = at(cm->sst_files[start_level],index);
     if (victim == NULL) return;
     list * indexs = List(0, sizeof(size_t), false);
     insert(indexs, &index);
@@ -463,8 +463,8 @@ static void compact_one_table(compact_manager * cm, size_t start_level,  size_t 
     compact[0]->complete = false;
     for (int i = 1 ; i <indexs->len; i++ ){
         compact[i] = request_struct(cm->compact_pool);
-        size_t index=   *(size_t*)get_element(indexs,i);
-        compact[i]->sst_file = get_element(cm->sst_files[level_to_check],index);
+        size_t index=   *(size_t*)at(indexs,i);
+        compact[i]->sst_file = at(cm->sst_files[level_to_check],index);
         compact[i]->complete = false; 
 
     }
@@ -500,8 +500,8 @@ static void remove_and_rename(sst_f_inf *old, sst_f_inf *new, const char level) 
     //free_sst_inf(old);
 }
 static void handle_first_element(compact_manager *cm, size_t index,  list * next_level, list * old_level, compact_job* job){
-    sst_f_inf *old_first = get_element(old_level, index);
-    sst_f_inf *new_first = get_element(job->new_sst_files, 0);
+    sst_f_inf *old_first = at(old_level, index);
+    sst_f_inf *new_first = at(job->new_sst_files, 0);
 
     remove_and_rename(old_first, new_first, (const char )48 + job->end_level);
     insert(next_level, new_first);
@@ -510,7 +510,7 @@ static void remove_changed_ssts(list *old_level, compact_job *job, list * indexe
     for (int i = old_level->len+1; i > 0; i--) {
         size_t real_index = i - 1;
         if (!check_in_list(indexes, &real_index, &compare_size_t)) continue;
-        sst_f_inf *old = get_element(old_level, real_index);
+        sst_f_inf *old = at(old_level, real_index);
         if (old!= NULL && old->mem_store != NULL) free_sst_inf(old);
         old = NULL;
         remove_at(old_level, real_index);
@@ -522,13 +522,13 @@ static void integrate_new_tables(compact_manager *cm, compact_job *job, list *in
     list *next_level = List(0, sizeof(sst_f_inf), false);
 
     //lock_everything();
-    handle_first_element(cm,*(size_t*)(get_element(indexs, 0)),next_level,curr_level, job);
+    handle_first_element(cm,*(size_t*)(at(indexs, 0)),next_level,curr_level, job);
     list *level_to_change = next_level;
     
     for (size_t i = 1; i < indexs->len; i++)
     {
-        sst_f_inf *old = get_element(search_level, *(size_t*)get_element(indexs, i));
-        sst_f_inf *new = get_element(job->new_sst_files, i);
+        sst_f_inf *old = at(search_level, *(size_t*)at(indexs, i));
+        sst_f_inf *new = at(job->new_sst_files, i);
         if (new == NULL){
             //remove(old->file_name);
             break;
@@ -540,14 +540,14 @@ static void integrate_new_tables(compact_manager *cm, compact_job *job, list *in
     }
     for (size_t i= 0; i < search_level->len; i++){
         if (check_in_list(indexs, &i, &compare_size_t)) continue;
-        insert(level_to_change, get_element(search_level, i));
+        insert(level_to_change, at(search_level, i));
     }
     if (job->start_level != job->search_level) {
-       remove_at(curr_level, *(size_t*)(get_element(indexs, 0)));
+       remove_at(curr_level, *(size_t*)(at(indexs, 0)));
     }
     //unlock_everything();
     for (int i = indexs->len; i < job->new_sst_files->len; i++) {
-        sst_f_inf *new = get_element(job->new_sst_files, i);
+        sst_f_inf *new = at(job->new_sst_files, i);
 
         char buf[128];
         gen_sst_fname(level_to_change->len, job->end_level, buf);

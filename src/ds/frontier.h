@@ -74,8 +74,8 @@ void enqueue(frontier *front, void* element) {
     }
     insert(front->queue, element);
     int i = front->queue->len - 1;
-    while (i != 0 && front->compare(get_element(front->queue, (i - 1) / 2), get_element(front->queue, i)) >= 0) {
-        swap(get_element(front->queue, (i - 1) / 2), get_element(front->queue, i), front->queue->dtS);
+    while (i != 0 && front->compare(at(front->queue, (i - 1) / 2), at(front->queue, i)) >= 0) {
+        swap(at(front->queue, (i - 1) / 2), at(front->queue, i), front->queue->dtS);
         i = (i - 1) / 2;
     }
 }
@@ -87,22 +87,22 @@ void heapify(frontier *front, int index) {
     int right = 2 * index + 2;
 
     if (left < size) {
-        void * left_element = get_element(front->queue,left );
-        void * curr_element = get_element(front->queue, largest);
+        void * left_element = at(front->queue,left );
+        void * curr_element = at(front->queue, largest);
         if (front->compare(left_element, curr_element) <= 0){
             largest = left;
         }
         
     }
     if (right < size){
-        void * right_element = get_element(front->queue ,right );
-        void * curr_element = get_element(front->queue, largest);
+        void * right_element = at(front->queue ,right );
+        void * curr_element = at(front->queue, largest);
         if (front->compare(right_element, curr_element) <= 0){
             largest = right;
         }
     }
     if (largest != index) {
-        swap(get_element(front->queue, index), get_element(front->queue, largest), front->queue->dtS);
+        swap(at(front->queue, index), at(front->queue, largest), front->queue->dtS);
         heapify(front, largest);
     }
 }
@@ -112,12 +112,12 @@ void dequeue(frontier* front, void* out_buffer) {
         return; // or handle the empty queue case appropriately
     }
 
-    void* root = get_element(front->queue, 0);
+    void* root = at(front->queue, 0);
     kv * l = root;
     int* m = l->key;
     memcpy(out_buffer, root, front->queue->dtS);
 
-    void* last_element = get_element(front->queue, front->queue->len - 1);
+    void* last_element = at(front->queue, front->queue->len - 1);
     kv * p= last_element;
     int * q= p->key;
     swap(root, last_element, front->queue->dtS);
@@ -127,11 +127,11 @@ void dequeue(frontier* front, void* out_buffer) {
 }
 
 void* peek(frontier * front) {
-    return get_element(front->queue, 0);
+    return at(front->queue, 0);
 }
 void debug_print(frontier * front){
     for (int i =0; i < front->queue->len; i++){
-     kv* l =(kv*) get_element(front->queue,i);
+     kv* l =(kv*) at(front->queue,i);
      fprintf(stdout, "%s, %s\n",(char*)l->key, (char*)l->value);
     }
 }

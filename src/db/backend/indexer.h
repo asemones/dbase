@@ -140,7 +140,7 @@ void read_index_block(sst_f_inf * file, byte_buffer * stream)
     stream->curr_bytes = read;
     stream->read_pointer = 0;
     for (int i =0; i < file->block_indexs->len; i++){
-        block_index * index = (block_index*)get_element(file->block_indexs, i);
+        block_index * index = (block_index*)at(file->block_indexs, i);
         index->min_key = (char*)arena_alloc(file->mem_store, 40);
         index->uuid = (char*)arena_alloc(file->mem_store, 40);
         block_from_stream(stream, index);
@@ -151,7 +151,7 @@ void read_index_block(sst_f_inf * file, byte_buffer * stream)
 
 void all_index_stream(size_t num_table, byte_buffer* stream, list * indexes){
     for (int i = 0; i < num_table; i ++){
-        block_index * index =(block_index*)get_element(indexes, i);
+        block_index * index =(block_index*)at(indexes, i);
         block_to_stream(stream, index);
     }
 }

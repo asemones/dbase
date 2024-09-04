@@ -43,10 +43,10 @@ void deseralize_wal(WAL * w, byte_buffer * b){
     byte_buffer_transfer(b, w->fn_buffer, temp_curr_bytes);
     size_t s = 0;
     for (int i = 0; i < fn_list_len; i ++){
-        char * element = buf_ind(b,s);
+        char * element = buf_ind(w->fn_buffer,s);
         if (element  == NULL) break;
         s+=MAX_WAL_FN_LEN;
-        insert(w->fn, element);
+        insert(w->fn, &element);
     }
 
 }

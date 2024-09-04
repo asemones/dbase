@@ -106,5 +106,8 @@ int main(void) {
     RUN_TEST(test_full_table_scan_messy);
     fprintf(stderr, "RUNNING WAL TESTS\n");
     RUN_TEST(test_wal_init);
+    RUN_TEST(test_seralize_wal);
+    RUN_TEST(test_deseralize_wal);
+    RUN_TEST(test_write_WAL);
     return UNITY_END();
 }

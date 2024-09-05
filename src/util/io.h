@@ -55,6 +55,15 @@ int write_file(char * buf, char * file, char * mode, size_t bytes, size_t elemen
     fclose(File);
     return written_size;
 }
+long get_file_size(FILE *file) {
+    long size;
+    
+    fseek(file, 0, SEEK_END);
+    size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    
+    return size;
+}
 
 /*eventLoop* createLoop(size_t size){
     eventLoop * loop =(eventLoop*)wrapper_alloc((sizeof (*loop)), NULL,NULL);

@@ -13,6 +13,8 @@ void test_create_engine(void) {
     remove("meta.bin");
     remove("bloom.bin");
     remove("db.bin");
+    remove ("WAL_0.bin");
+    remove ("WAL_M.bin");
 }
 
 void test_write_engine(void) {
@@ -27,6 +29,8 @@ void test_write_engine(void) {
     remove("bloom.bin");
     remove("db.bin");
     remove("sst_0_0.bin");
+    remove ("WAL_0.bin");
+    remove ("WAL_M.bin");
 }
 
 void test_write_then_read_engine(void) {
@@ -79,6 +83,8 @@ void test_write_then_read_engine(void) {
     remove("db.bin");
     remove("sst_0_0.bin");
     remove("sst_1_0.bin");
+    remove ("WAL_0.bin");
+    remove ("WAL_M.bin");
 
     for (int i = 0; i < size; i++) {
         free((void*)keys[i].entry);

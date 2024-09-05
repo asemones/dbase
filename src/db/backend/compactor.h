@@ -304,7 +304,7 @@ void merge_tables(compact_infos** compact, byte_buffer *dest_buffer, compact_job
     
     db_unit last_key;
   
-    /*weird edgecase with the block min key where it is not added until later*/
+   /*i strongly reccomend not touching this loop, edge case galore thats easy to fuck up*/
     while (pq->queue->len > 0) {
         merge_data current;
         dequeue(pq, &current);

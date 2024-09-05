@@ -1,18 +1,17 @@
 # Summary
 
-Date : 2024-08-25 20:07:59
+Date : 2024-09-04 18:48:44
 
 Directory /home/asemones/Documents/personal_code/dbase
 
-Total : 47 files,  4931 codes, 480 comments, 679 blanks, all 6090 lines
+Total : 48 files,  5252 codes, 479 comments, 747 blanks, all 6478 lines
 
 Summary / [Details](details.md) / [Diff Summary](diff.md) / [Diff Details](diff-details.md)
 
 ## Languages
 | language | files | code | comment | blank | total |
 | :--- | ---: | ---: | ---: | ---: | ---: |
-| C++ | 41 | 4,626 | 460 | 629 | 5,715 |
-| C | 3 | 267 | 12 | 35 | 314 |
+| C | 45 | 5,214 | 471 | 732 | 6,417 |
 | Makefile | 1 | 29 | 8 | 10 | 47 |
 | Markdown | 1 | 8 | 0 | 5 | 13 |
 | CMake | 1 | 1 | 0 | 0 | 1 |
@@ -20,17 +19,17 @@ Summary / [Details](details.md) / [Diff Summary](diff.md) / [Diff Details](diff-
 ## Directories
 | path | files | code | comment | blank | total |
 | :--- | ---: | ---: | ---: | ---: | ---: |
-| . | 47 | 4,931 | 480 | 679 | 6,090 |
+| . | 48 | 5,252 | 479 | 747 | 6,478 |
 | . (Files) | 2 | 37 | 8 | 15 | 60 |
-| src | 45 | 4,894 | 472 | 664 | 6,030 |
-| src/db | 13 | 2,007 | 135 | 236 | 2,378 |
-| src/db/backend | 13 | 2,007 | 135 | 236 | 2,378 |
-| src/db/backend (Files) | 12 | 1,845 | 126 | 220 | 2,191 |
+| src | 46 | 5,215 | 471 | 732 | 6,418 |
+| src/db | 13 | 2,146 | 142 | 257 | 2,545 |
+| src/db/backend | 13 | 2,146 | 142 | 257 | 2,545 |
+| src/db/backend (Files) | 12 | 1,984 | 133 | 241 | 2,358 |
 | src/db/backend/dal | 1 | 162 | 9 | 16 | 187 |
-| src/ds | 12 | 1,413 | 239 | 171 | 1,823 |
-| src/tests | 16 | 1,280 | 33 | 223 | 1,536 |
-| src/tests (Files) | 15 | 1,279 | 33 | 223 | 1,535 |
+| src/ds | 12 | 1,460 | 240 | 178 | 1,878 |
+| src/tests | 17 | 1,400 | 24 | 262 | 1,686 |
+| src/tests (Files) | 16 | 1,399 | 24 | 262 | 1,685 |
 | src/tests/unity | 1 | 1 | 0 | 0 | 1 |
-| src/util | 4 | 194 | 65 | 34 | 293 |
+| src/util | 4 | 209 | 65 | 35 | 309 |
 
 Summary / [Details](details.md) / [Diff Summary](diff.md) / [Diff Details](diff-details.md)

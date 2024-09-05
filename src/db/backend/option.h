@@ -14,7 +14,6 @@ typedef struct option{
     size_t READ_WORKERS;
     size_t WRITE_WORKERS;
     size_t LRU_CACHE_SIZE;
-    size_t WAL_CLEAR_SIZE;
     size_t WAL_BUFFERING_SIZE;
     int COMPACTOR_WRITE_SIZE;//the number of blocks to write at once
     double SST_TABLE_SIZE_SCALAR;
@@ -35,13 +34,13 @@ void set_defaults(option * opt){
     opt->NUM_COMPACTOR_UNITS = 3;
     opt->READ_WORKERS = 3;
     opt->WRITE_WORKERS = 3;
-    opt->WAL_CLEAR_SIZE = 1024 *1024*10;
     opt->WAL_BUFFERING_SIZE =4096;
     opt->LRU_CACHE_SIZE = 32 * 1024 * 1024;
     opt->WAL =true;
     opt->WAL_M_F_N = "WAL_M.bin";
     opt->COMPACTOR_WRITE_SIZE =10;
     opt->MAX_WAL_FILES = 5;
+    opt->WAL_SIZE = opt->MEM_TABLE_SIZE;
 
 }
 void set_debug_defaults(option * opt){
@@ -60,6 +59,7 @@ void set_debug_defaults(option * opt){
     opt->WAL_M_F_N = "WAL_M.bin";
     opt->COMPACTOR_WRITE_SIZE = 2;
     opt->MAX_WAL_FILES = 2;
+    opt->WAL_SIZE = opt->MEM_TABLE_SIZE;
 }
 
 

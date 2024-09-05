@@ -34,6 +34,7 @@ typedef struct meta_data{
     size_t min_c_ratio; //minimum compact ratio
     list * sst_files[MAX_LEVELS];
     int levels_with_data[MAX_LEVELS];
+    int shutdown_status;
 }meta_data;
 /* something doesnt read or write properly after the first sst list is written*/
 static void read_sst_list(list * sst_files, byte_buffer * tempBuffer, size_t num_sst){
@@ -66,6 +67,7 @@ static void fresh_meta_load(meta_data * meta){
     meta->num_sst_file = 0;
     meta->file_ptr = 0;
     meta->db_length = 0;
+    meta->shutdown_status = -1;
    //meta->basic_index = Dict();
     meta->base_level_size = BASE_LEVEL_SIZE;
     meta->min_c_ratio = MIN_COMPACT_RATIO;
@@ -92,7 +94,7 @@ meta_data * load_meta_data(char * file, char * bloom_file){
         return meta;
     }
     int size=  sizeof(size_t);
-
+    read_buffer(tempBuffer, &meta->shutdown_status, sizeof(meta->shutdown_status));
     read_buffer(tempBuffer, &meta->num_sst_file, size);
     read_buffer(tempBuffer, &meta->file_ptr, size);
     read_buffer(tempBuffer, &meta->db_length, size);
@@ -133,6 +135,8 @@ static void dump_sst_list(list * sst_files, FILE * f){
 }
 static void write_md_d(char * file, meta_data * meta, byte_buffer * temp_buffer){
        FILE * f = fopen(file, "wb");
+       meta->shutdown_status = 0;
+       fwrite(&meta->shutdown_status, sizeof(meta->shutdown_status), 1, f);
        fwrite(&meta->num_sst_file, sizeof(size_t),1, f);
        fwrite(&meta->file_ptr, sizeof(size_t),1, f);
        fwrite(&meta->db_length, sizeof(size_t),1, f);

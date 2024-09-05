@@ -39,6 +39,7 @@ void end_test(void) {
     free_list(test_wal->fn, NULL);
     free(test_wal);
     free_buffer(test_buffer);
+    remove("WAL_M.bin");
 }
 
 void test_seralize_wal(void) {

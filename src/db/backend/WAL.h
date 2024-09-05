@@ -2,14 +2,19 @@
 #include <stdlib.h>
 #include "option.h"
 #include "../../ds/byte_buffer.h"
-#include "lsm.h"
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <errno.h>
+#include "../../util/io.h"
+
+
 
 
 #define FS_B_SIZE 512
 #define MAX_WAL_FN_LEN 20
-
+#pragma once
 
 typedef struct WAL {
     int fd;
@@ -24,6 +29,7 @@ typedef struct WAL {
 /*finish the WAL. split into multiple files that get archivewd after some time. 
 */
 /*the WAL is only valid/matters for entries inside a memtable that haven't been flushed yet. */
+/*not writing file names to the fn buffer*/
 void seralize_wal(WAL * w, byte_buffer * b){
     write_buffer(b, (char*)&w->len, sizeof(w->len));
    // write_buffer(b, (char*)&w->archived_index, sizeof(w->archived_index));
@@ -35,12 +41,12 @@ void seralize_wal(WAL * w, byte_buffer * b){
 void deseralize_wal(WAL * w, byte_buffer * b){
     read_buffer(b, (char*)&w->len, sizeof(w->len));
    // read_buffer(b, (char*)&w->archived_index, sizeof(w->archived_index));
-    size_t fn_list_len = 0;
+    int fn_list_len = 0;
     read_buffer(b, (char*)&fn_list_len, sizeof(fn_list_len));
     read_buffer(b,(char*)&w->curr_fd_bytes, sizeof(w->curr_fd_bytes));
     size_t temp_curr_bytes=  0;
     read_buffer(b,(char*)&temp_curr_bytes, sizeof(temp_curr_bytes));
-    byte_buffer_transfer(b, w->fn_buffer, temp_curr_bytes);
+    byte_buffer_transfer(b, w->fn_buffer, MAX_WAL_FN_LEN * fn_list_len);
     size_t s = 0;
     for (int i = 0; i < fn_list_len; i ++){
         char * element = buf_ind(w->fn_buffer,s);
@@ -49,6 +55,14 @@ void deseralize_wal(WAL * w, byte_buffer * b){
         insert(w->fn, &element);
     }
 
+}
+char * add_new_wal_file(WAL * w){
+
+    char * file_name = buf_ind(w->fn_buffer, (MAX_WAL_FN_LEN* w->fn->len));
+    sprintf(file_name, "WAL_%d.bin", w->fn->len);
+    w->fn_buffer->curr_bytes +=MAX_WAL_FN_LEN;
+    insert(w->fn, &file_name);
+    return file_name;
 }
 WAL* init_WAL(byte_buffer * b){
     WAL * w = malloc(sizeof(WAL));
@@ -60,33 +74,40 @@ WAL* init_WAL(byte_buffer * b){
     w->len = 0;
     if ((w->wal_meta = fopen(GLOB_OPTS.WAL_M_F_N, "r+")) == NULL){
         w->wal_meta = fopen(GLOB_OPTS.WAL_M_F_N, "w+");
-        file_name = buf_ind(w->fn_buffer, 0);
-        sprintf(file_name, "WAL_0.bin");
-        insert(w->fn, file_name);
+        file_name = add_new_wal_file(w);
     }
     else{
+        b->curr_bytes +=  fread(b->buffy,1, get_file_size(w->wal_meta)+2, w->wal_meta);
         deseralize_wal(w,b);
-        file_name = get_last(w->fn);
+        char ** file_n_ptr = get_last(w->fn);
+        if (file_n_ptr!= NULL) file_name = *file_n_ptr;
+        /*double pointer this*/
     }
-    w->fd = open(file_name, O_CREAT|O_APPEND| __O_DIRECT);
+    w->fd = open(file_name, O_CREAT | O_WRONLY| O_APPEND| __O_DIRECT,  S_IRUSR  | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+    if (w->fd == -1){
+        perror("open failed");
+        exit(EXIT_FAILURE);
+    }
     return w;
 }
 int write_WAL( WAL * w, db_unit  key, db_unit  value){
     int ret= 0;
-    if (w->curr_fd_bytes > GLOB_OPTS.WAL_SIZE){
-        int diff  = w->wal_buffer->curr_bytes % FS_B_SIZE;
+    if (w->curr_fd_bytes  + key.len + value.len + 4 > GLOB_OPTS.WAL_SIZE){
+        int diff = (FS_B_SIZE - (w->wal_buffer->curr_bytes % FS_B_SIZE)) % FS_B_SIZE;
         w->wal_buffer->curr_bytes += diff;
-        write(w->fd, w->wal_buffer, w->fn_buffer->curr_bytes);
+        write(w->fd, w->wal_buffer->buffy, w->wal_buffer->curr_bytes);
         reset_buffer(w->wal_buffer);
         w->curr_fd_bytes = 0;
         close(w->fd);
-        char * file_name = buf_ind(w->fn_buffer, (w->fn->len * MAX_F_N_SIZE));
-        sprintf(file_name, "WAL_%d.bin", w->fn->len);
-        insert(w->fn, file_name);
-        w->fd = open(file_name,  __O_DIRECT|O_CREAT|O_APPEND);
+        char * file_name = add_new_wal_file(w);
+        w->fd =  open(file_name, O_CREAT |  O_WRONLY| O_APPEND| __O_DIRECT,  S_IRUSR  | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
     }
-    if (w->wal_buffer->curr_bytes  > GLOB_OPTS.WAL_BUFFERING_SIZE){
-        write(w->fd, w->wal_buffer, GLOB_OPTS.WAL_BUFFERING_SIZE);
+    if (w->wal_buffer->curr_bytes + key.len + value.len + 4 >= GLOB_OPTS.WAL_BUFFERING_SIZE){
+        int size = write(w->fd, w->wal_buffer->buffy, GLOB_OPTS.WAL_BUFFERING_SIZE);
+        if (size != GLOB_OPTS.WAL_BUFFERING_SIZE) {
+            perror("write failed");
+            exit(EXIT_FAILURE);/*proper error handleing in the future, since this signifies the transacation failed*/
+        }
         reset_buffer(w->wal_buffer);
     }
     if (w->fn->len >=GLOB_OPTS.MAX_WAL_FILES){
@@ -94,8 +115,8 @@ int write_WAL( WAL * w, db_unit  key, db_unit  value){
         remove(file_to_remove);
         remove_at(w->fn, 0);
         memmove(buf_ind(w->fn_buffer, 0), buf_ind(w->fn_buffer, MAX_WAL_FN_LEN)
-        , w->curr_fd_bytes- MAX_F_N_SIZE);
-        w->curr_fd_bytes -= MAX_WAL_FN_LEN;
+        , w->fn_buffer->curr_bytes- MAX_WAL_FN_LEN);
+        w->fn_buffer->curr_bytes -= MAX_WAL_FN_LEN;
     }
     ret += write_db_unit(w->wal_buffer, key);
     ret += write_db_unit(w->wal_buffer, value);
@@ -104,14 +125,17 @@ int write_WAL( WAL * w, db_unit  key, db_unit  value){
     return ret;
 }
 void kill_WAL(WAL * w, byte_buffer * temp){
-    int diff  = w->wal_buffer->curr_bytes % FS_B_SIZE;
+    int diff = (FS_B_SIZE - (w->wal_buffer->curr_bytes % FS_B_SIZE)) % FS_B_SIZE;
     w->wal_buffer->curr_bytes += diff;
-    write(w->fd, w->wal_buffer, w->wal_buffer->curr_bytes);
-    deseralize_wal(w, temp);
+    write(w->fd, w->wal_buffer->buffy, w->wal_buffer->curr_bytes);
+    seralize_wal(w, temp);
     fwrite(temp->buffy, 1, temp->curr_bytes, w->wal_meta);
+    fflush(w->wal_meta);
     close(w->fd);
     free_buffer(w->wal_buffer);
+    free_buffer(w->fn_buffer);
     free_list(w->fn, NULL);
+    free(w);
 
 }
 

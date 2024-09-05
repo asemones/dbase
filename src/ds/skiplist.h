@@ -60,6 +60,7 @@ int skip_from_stream(SkipList * s, byte_buffer * stream){
         insert_list(s, key, value);
         ret = 4+ value.len + key.len;
     }
+    return ret;
 }
 
 void insert_list(SkipList* list, db_unit key, db_unit value) {

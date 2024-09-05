@@ -17,6 +17,7 @@
 #include "../../ds/associative_array.h"
 #include "option.h"
 #include "key-value.h"
+#include "WAL.h"
 
 #ifndef LSM_H
 #define LSM_H
@@ -56,6 +57,7 @@ typedef struct storage_engine{
     size_t num_table;
     struct_pool * write_pool;
     cache * cach;
+    WAL * w;
 }storage_engine;
 static int flush_table(storage_engine * engine);
 void lock_table(storage_engine * engine);
@@ -71,6 +73,28 @@ static mem_table * create_table(){
         table->range[i] = NULL;
     }
     return table;
+}
+static int restore_state(storage_engine * e ,int lost_tables){
+    WAL* w = e->w;
+    if (w->fn->len  == 0 ){
+        return -1;
+    }
+    int ret = 0;
+    for (int i = 0;  i < lost_tables; i++){
+        mem_table * m = e->table[i];
+        char ** file = get_last(w->fn);
+        if (file  == NULL  || *file == NULL) return -1;
+        FILE * target = fopen(*file, "rb");
+        byte_buffer* skip_buffer = request_struct(e->write_pool);
+        if (target == NULL) return -1;
+        skip_buffer->curr_bytes = fread(skip_buffer->buffy,1, get_file_size(target), target);
+
+        m->bytes = skip_from_stream(m->skip, skip_buffer);
+        ret += m->bytes;
+
+    }
+    return ret;
+
 }
 static void clear_table(mem_table * table){
     if (table->skip != NULL) freeSkipList(table->skip);
@@ -98,15 +122,28 @@ storage_engine * create_engine(char * file, char * bloom_file){
         byte_buffer * buffer = create_buffer(MEMTABLE_SIZE*1.5);
         insert_struct(engine->write_pool,buffer);
     }
+    byte_buffer * b=  request_struct(engine->write_pool);
+    engine->w = init_WAL(b);
+    if (engine->meta->shutdown_status !=0){
+        restore_state(engine,1); /*change 1 to a variable when implementing error system. also remeber
+        the stray skipbufs inside this function skipbuf*/
+    }
+
     return engine;
 }
 int write_record(storage_engine* engine ,db_unit key, db_unit value){
     if (key.entry== NULL) return -1;
+    int success = write_WAL(engine->w, key, value);
+    if (success  == -1) {
+        fprintf(stdout, "WARNING: transcantion failure \n");
+        exit(EXIT_FAILURE);
+    }
     if (engine->table[CURRENT_TABLE]->bytes + 4 + key.len + value.len >=  MEMTABLE_SIZE){
         lock_table(engine);
         int status = flush_table(engine);
         if (status != 0) return -1;
     }
+    
     insert_list(engine->table[CURRENT_TABLE]->skip, key, value);
     engine->table[CURRENT_TABLE]->num_pair++;
     engine->table[CURRENT_TABLE]->bytes += 4 + key.len + value.len ;
@@ -321,6 +358,9 @@ void free_engine(storage_engine * engine, char* meta_file,  char * bloom_file){
     destroy_meta_data(meta_file, bloom_file,engine->meta);  
     engine->meta = NULL;
     free_tables(engine);
+    byte_buffer * b = request_struct(engine->write_pool);
+    kill_WAL(engine->w, request_struct(engine->write_pool));
+    return_struct(engine->write_pool, b, &reset_buffer);
     free_pool(engine->write_pool, &free_buffer);
     free_cache(engine->cach);
     free(engine);

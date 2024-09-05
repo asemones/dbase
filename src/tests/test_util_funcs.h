@@ -127,4 +127,7 @@ void clean_test_files(void){
     remove ("in_prog_sst_4_0");
     remove ("in_prog_sst_5_0");
     remove ("in_prog_sst_6_0");
+    remove ("WAL_0.bin");
+    remove("WAL_1.bin");
+    remove("WAL_M.bin");
 }

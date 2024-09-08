@@ -10,6 +10,7 @@
 #include "../../../util/alloc_util.h"
 #include "../sst_builder.h"
 #include"../indexer.h"
+#include "../../../util/error.h"
 #ifndef METADATA_H
 #define METADATA_H
 #define BUFFER_SIZE 563840
@@ -35,9 +36,10 @@ typedef struct meta_data{
     list * sst_files[MAX_LEVELS];
     int levels_with_data[MAX_LEVELS];
     int shutdown_status;
+    int err_code;
 }meta_data;
 /* something doesnt read or write properly after the first sst list is written*/
-static void read_sst_list(list * sst_files, byte_buffer * tempBuffer, size_t num_sst){
+static int read_sst_list(list * sst_files, byte_buffer * tempBuffer, size_t num_sst){
    for (int i = 0; i < sst_files->len; i++){
         size_t block_ind_len = 0;
         if (i +1 ==  sst_files->cap) expand(sst_files);
@@ -50,17 +52,25 @@ static void read_sst_list(list * sst_files, byte_buffer * tempBuffer, size_t num
         read_buffer(tempBuffer, &sst->block_start, sizeof(size_t));
         read_buffer(tempBuffer, &block_ind_len, sizeof(size_t));
         sst->block_indexs = thread_safe_list(block_ind_len,sizeof(block_index),false);
+        if (sst->block_indexs == NULL){
+            return STRUCT_NOT_MADE;
+        }
         sst->block_indexs->len = block_ind_len;
         sst->mem_store= calloc_arena(GLOB_OPTS.BLOCK_INDEX_SIZE);
+        if(sst->mem_store == NULL){
+            return STRUCT_NOT_MADE;
+        }
         
     }
     byte_buffer * small_buff = create_buffer(30 * 1024);
     for (int i = 0 ;i < num_sst; i++){
         sst_f_inf * sst = (sst_f_inf*)at(sst_files,i);
-        read_index_block(sst, small_buff);
+        int error_code = read_index_block(sst, small_buff);
+        if (error_code !=0) return error_code;
 
     }
     free_buffer(small_buff);
+    return 0;
 }
 
 static void fresh_meta_load(meta_data * meta){
@@ -85,8 +95,10 @@ static void fresh_meta_load(meta_data * meta){
 }
 meta_data * load_meta_data(char * file, char * bloom_file){
     meta_data * meta = (meta_data*)wrapper_alloc((sizeof(meta_data)), NULL,NULL);
+    if (meta == NULL) return NULL;
+    meta->err_code = OK;
     byte_buffer * tempBuffer = create_buffer(DICT_BUFFER_SIZE);
-
+    if (tempBuffer == NULL) return NULL;
     int bytes;
     if ((bytes = read_file(tempBuffer->buffy,file, "rb",1,0)) <= 0) {
         fresh_meta_load(meta);
@@ -106,11 +118,17 @@ meta_data * load_meta_data(char * file, char * bloom_file){
     for (int i = 0; i < MAX_LEVELS; i++){
          if (lengths[i] <=0){
             meta->sst_files[i] = thread_safe_list(0,sizeof(sst_f_inf),false);
+            if (meta->sst_files[i] == NULL){
+                return NULL;
+            }
             continue;
         }
         meta->sst_files[i] = thread_safe_list(lengths[i],sizeof(sst_f_inf),false);
         meta->sst_files[i]->len = lengths[i];
-        read_sst_list(meta->sst_files[i], tempBuffer, meta->num_sst_file);
+        int ret = read_sst_list(meta->sst_files[i], tempBuffer, meta->num_sst_file);
+        if (ret !=OK) {
+            meta->err_code = ret;
+        }
     }
     size_t readSize= 0;
     read_buffer(tempBuffer, &readSize, size);

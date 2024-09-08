@@ -18,7 +18,9 @@ typedef struct byte_buffer {
 
 byte_buffer * create_buffer(size_t size){
     byte_buffer * buffer = (byte_buffer*)wrapper_alloc((sizeof(byte_buffer)), NULL,NULL);
+    if (buffer== NULL) return NULL;
     buffer->buffy = (char*)calloc(size, 1);
+    if (buffer->buffy == NULL) return NULL;
     buffer->max_bytes = size;
     buffer->curr_bytes = 0;
     buffer->read_pointer = 0;

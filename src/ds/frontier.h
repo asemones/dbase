@@ -62,7 +62,9 @@ void free_front(frontier * front);
 
 frontier* Frontier(size_t dts, bool is_alloc, int (*compare)(const void*, const void*)) {
     frontier *front = (frontier*)wrapper_alloc((sizeof(frontier)), NULL, NULL);
+    if (front  == NULL ) return NULL;
     front->queue = List(16, dts, true);
+    if (front->queue == NULL) return NULL;
     front->queue->isAlloc = is_alloc;
     front->compare = compare;
     return front;

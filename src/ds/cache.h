@@ -155,19 +155,28 @@ ll_node* get_page(cache * c,char * uuid){
 }
 cache_entry *retrieve_entry(cache * cach, block_index * index, char * file_name){
     ll_node * page = get_page(cach, index->uuid);
-        cache_entry * c;
-        if (page){
-            c = page->data;
+    cache_entry * c;
+    if (page){
+        c = page->data;
+    }
+    else {
+        FILE * sst_file = fopen(file_name,"rb");
+        if (sst_file == NULL) {
+            return NULL;
         }
-        else {
-            FILE * sst_file = fopen(file_name,"rb");
-            fseek(sst_file, index->offset, SEEK_SET);
-            ll_node * fresh_page = add_page(cach, sst_file, index->uuid, index->len);
-            c = fresh_page->data;
-            load_block_into_into_ds(c->buf,c->ar,&into_array);
-            fclose(sst_file);
+        int ret = fseek(sst_file, index->offset, SEEK_SET);
+        if (ret < 0) return NULL;
+        ll_node * fresh_page = add_page(cach, sst_file, index->uuid, index->len);
+        c = fresh_page->data;
+        if (!verify_data(c->buf->buffy, c->buf->curr_bytes,index->checksum)){
+            fprintf(stderr, "data is invalid\n");
+            remove_kv(cach->map,c->buf->utility_ptr);
+            return NULL;
         }
-        return c;
+        load_block_into_into_ds(c->buf,c->ar,&into_array);
+        fclose(sst_file);
+    }
+    return c;
 }
 void free_cache(cache * c){
     free_ll(c->queue, NULL);

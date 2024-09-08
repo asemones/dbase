@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include<stdlib.h>
+#include "../../ds/checksum.h"
 #include "../../ds/byte_buffer.h"
 #include "json.h"
 #include "../../util/stringutil.h"
@@ -44,6 +45,12 @@ void build_index(sst_f_inf * sst, block_index * index, byte_buffer * b, size_t n
         index->min_key = (char*)arena_alloc(sst->mem_store, 40);
         memcpy(&key_len, &b->buffy[block_offsets + 2], sizeof(u_int16_t));
         memcpy(index->min_key, &b->buffy[block_offsets +4], key_len);
+        if (is_avx_supported()){
+            index->checksum =  crc32_avx2(buf_ind(b, block_offsets), index->len);
+        }
+        else{
+            index->checksum = crc32(buf_ind(b, block_offsets), index->len);
+        }
     } 
     index->num_keys = num_entries;
     insert(sst->block_indexs, index);  

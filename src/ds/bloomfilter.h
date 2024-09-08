@@ -65,8 +65,10 @@ uint32_t MurmurHash3_x86_32(void *key, int len, uint32_t seed) {
 
 bit_array* create_bit_array(size_t size){
     bit_array *bit  = (bit_array*) wrapper_alloc((sizeof(bit_array)), NULL,NULL);
+    if (bit == NULL) return NULL;
     bit->size = size;
     bit->array = (uint64_t*)calloc(size, 64);
+    if (bit->array == NULL) return NULL;
     return bit;
 }
 void set_bit(bit_array *ba, size_t index){
@@ -85,11 +87,13 @@ void free_bit(bit_array *ba){
 }
 bloom_filter* bloom(size_t num_hash, size_t num_word , bool read_files, char * file){
     bloom_filter * b =(bloom_filter *)wrapper_alloc((sizeof(*b)), NULL,NULL);
+    if (b== NULL) return NULL;
     if (read_files && file!=NULL){
         char temp [513000];
         int l= read_file(temp,file,"rb",8,2);
         if (l <=0){
             b->ba = create_bit_array(num_word);
+            if (b->ba == NULL) return NULL;
             b->num_hash = num_hash;
             return b;
         }
@@ -97,6 +101,7 @@ bloom_filter* bloom(size_t num_hash, size_t num_word , bool read_files, char * f
         memcpy(&tsize, temp, sizeof(size_t));
         memcpy(&b->num_hash, temp + sizeof(size_t), sizeof(size_t));
         b->ba = create_bit_array(tsize);
+        if (b->ba == NULL) return NULL;
         b->ba->size = tsize;
         char temp2 [(b->ba->size)*sizeof(size_t)+24];
         l =  read_file(temp2,file,"rb",8,b->ba->size*sizeof(size_t));
@@ -108,6 +113,7 @@ bloom_filter* bloom(size_t num_hash, size_t num_word , bool read_files, char * f
     }
     else{
         b->ba = create_bit_array(num_word);
+        if (b->ba == NULL) return NULL;
         b->num_hash = num_hash;
         return b;
     }
@@ -176,6 +182,9 @@ bloom_filter * from_stream(byte_buffer * buffy_the_buffer){
     bloom_filter * b = (bloom_filter*)wrapper_alloc((sizeof(bloom_filter)), NULL,NULL);
     size_t tsize;
     read_buffer(buffy_the_buffer, &tsize, sizeof(size_t));
+    if (tsize > ~tsize ){
+        return NULL;
+    }
     read_buffer(buffy_the_buffer, &b->num_hash, sizeof(size_t));
     b->ba = create_bit_array(tsize);
     b->ba->size = tsize;

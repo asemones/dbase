@@ -66,7 +66,9 @@ char * add_new_wal_file(WAL * w){
 }
 WAL* init_WAL(byte_buffer * b){
     WAL * w = malloc(sizeof(WAL));
+    if (w == NULL ) return NULL;
     w->wal_buffer = mem_aligned_buffer(GLOB_OPTS.WAL_BUFFERING_SIZE, FS_B_SIZE);
+    if (w->wal_buffer == NULL) return NULL;
     w->fn_buffer = create_buffer(MAX_WAL_FN_LEN * (GLOB_OPTS.MAX_WAL_FILES + 1));
     w->fn = List(0, sizeof(char*), false);
     char * file_name = NULL;
@@ -106,7 +108,7 @@ int write_WAL( WAL * w, db_unit  key, db_unit  value){
         int size = write(w->fd, w->wal_buffer->buffy, GLOB_OPTS.WAL_BUFFERING_SIZE);
         if (size != GLOB_OPTS.WAL_BUFFERING_SIZE) {
             perror("write failed");
-            exit(EXIT_FAILURE);/*proper error handleing in the future, since this signifies the transacation failed*/
+            return FAILED_TRANSCATION;/*proper error handleing in the future, since this signifies the transacation failed*/
         }
         reset_buffer(w->wal_buffer);
     }
@@ -122,7 +124,7 @@ int write_WAL( WAL * w, db_unit  key, db_unit  value){
     ret += write_db_unit(w->wal_buffer, value);
     w->len++;
     w->curr_fd_bytes += ret;
-    return ret;
+    return 0;
 }
 void kill_WAL(WAL * w, byte_buffer * temp){
     int diff = (FS_B_SIZE - (w->wal_buffer->curr_bytes % FS_B_SIZE)) % FS_B_SIZE;

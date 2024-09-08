@@ -19,7 +19,12 @@ typedef struct ll{
 }ll;
 ll * create_ll(arena * a){
     ll * list = (ll*)wrapper_alloc((sizeof(ll)), NULL,NULL);
+    if (list == NULL) return NULL;
     list->head = arena_alloc(a, sizeof(ll_node));
+    if (list->head == NULL) {
+        free(list);
+        return NULL;
+    } 
     list->num_linked = 0;
     list->a = a;
     return list;
@@ -39,7 +44,9 @@ ll * free_ll(ll * list, void (*free_func)(void*)){
 }
 void push_ll_void(void * key, void * value,void* v_ll){
     ll * l = (ll*)v_ll;
+    if (l == NULL) return;
     merge_data* temp = arena_alloc(l->a, sizeof(merge_data));
+    if (temp == NULL) return;
     temp->key = key;
     temp->value = value;
     l->iter->data = temp;
@@ -51,6 +58,9 @@ void push_ll_void(void * key, void * value,void* v_ll){
 ll * add_to_ll(ll * list, void * data){
     list->iter->data = data;
     list->iter->next = arena_alloc(list->a, sizeof(ll_node));
+    if (list->iter->next == NULL){
+        return NULL;
+    }
     list->iter->next->prev = list->iter;
     list->iter = list->iter->next;
     return list;

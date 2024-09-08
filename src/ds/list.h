@@ -120,6 +120,7 @@ void sort_list(list *my_list, bool ascending, compare func);
 
 list* List(int Size, int dataTypeSize, bool alloc){
     list * my_list  = (list*)wrapper_alloc((sizeof(list)), NULL,NULL);
+    if (my_list == NULL) return NULL;
     my_list->cap = 0;
     my_list->len =0;
     if (Size < 16){
@@ -129,6 +130,10 @@ list* List(int Size, int dataTypeSize, bool alloc){
     else {
         my_list->arr = wrapper_alloc((Size* dataTypeSize), NULL,NULL);
         my_list->cap= Size;
+    }
+    if (my_list->arr == NULL){
+        free(my_list);
+        return NULL;
     }
     my_list->isAlloc=alloc;
     my_list->dtS = dataTypeSize;
@@ -137,6 +142,7 @@ list* List(int Size, int dataTypeSize, bool alloc){
 }
 list * thread_safe_list(int Size, int dataTypeSize, bool alloc){
     list * my_list  = (list*)wrapper_alloc((sizeof(list)), NULL,NULL);
+    if (my_list == NULL) return NULL;
     my_list->cap = 0;
     my_list->len =0;
     if (Size < 16){
@@ -146,6 +152,10 @@ list * thread_safe_list(int Size, int dataTypeSize, bool alloc){
     else {
         my_list->arr = wrapper_alloc((Size* dataTypeSize), NULL,NULL);
         my_list->cap= Size;
+    }
+    if (my_list->arr == NULL){
+        free(my_list);
+        return NULL;
     }
     my_list->isAlloc=alloc;
     my_list->dtS = dataTypeSize;

@@ -63,9 +63,23 @@ int compare_merge_data(const void * one, const void * two){
 }
 aseDB_iter * create_aseDB_iter(){
     aseDB_iter * dbi = malloc(sizeof(aseDB_iter));
+    if (dbi == NULL ) return NULL;
     dbi->l_0_sst_iters = List(0,sizeof(sst_iter), false);
     dbi->pq = Frontier(sizeof(merge_data),false, &compare_merge_data);
     dbi->ret = List(0,sizeof(merge_data), false);
+    if (dbi->l_0_sst_iters == NULL || dbi->l_1_n_level_iters == NULL || dbi->ret == NULL){
+        if (dbi->l_0_sst_iters !=NULL){
+            free_list(dbi->l_0_sst_iters, NULL);
+        }
+        if (dbi->l_1_n_level_iters != NULL){
+            free_list(dbi->l_1_n_level_iters, NULL);
+        }
+        if (dbi->pq == NULL){
+            free_front(dbi->pq);
+        }
+        free(dbi);
+        return NULL;
+    }
     return dbi;
 }
 void init_block_iter(block_iter *b_cursor, block_index *file) {

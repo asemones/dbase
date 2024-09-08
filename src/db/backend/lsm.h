@@ -58,17 +58,28 @@ typedef struct storage_engine{
     struct_pool * write_pool;
     cache * cach;
     WAL * w;
+    int error_code;
 }storage_engine;
 static int flush_table(storage_engine * engine);
 void lock_table(storage_engine * engine);
 
 static mem_table * create_table(){
     mem_table * table = (mem_table*)wrapper_alloc((sizeof(mem_table)), NULL,NULL);
+    if (table == NULL) return NULL;
     table->bytes = 0;
     table->filter = bloom(NUM_HASH,NUM_WORD,false, NULL);
+    if (table->filter == NULL){
+        free(table);
+        return NULL;
+    } 
     table->immutable = false;
     table->num_pair = 0;
     table->skip = createSkipList(&compareString);
+    if (table->skip == NULL) {
+        free_filter(table->filter);
+        free(table);
+        return NULL;
+    }
     for(int i = 0 ; i < 2; i++){
         table->range[i] = NULL;
     }
@@ -109,34 +120,42 @@ static void clear_table(mem_table * table){
     }
 }
 storage_engine * create_engine(char * file, char * bloom_file){
+    init_crc32_table();
     storage_engine * engine = (storage_engine*)wrapper_alloc((sizeof(storage_engine)), NULL,NULL);
+    if (engine == NULL) return NULL;
     for (int i = 0; i < LOCKED_TABLE_LIST_LENGTH; i++){
         engine->table[i] = create_table();
+        if (engine->table[i] == NULL) return NULL; 
     }
     set_debug_defaults(&GLOB_OPTS);
     engine->meta = load_meta_data(file, bloom_file);
+    if (engine->meta == NULL) return NULL;
     engine->num_table = 0;
     engine->write_pool = create_pool(WRITER_BUFFS);
+    if (engine->write_pool == NULL) return NULL;
     engine->cach= create_cache(GLOB_OPTS.LRU_CACHE_SIZE, GLOB_OPTS.BLOCK_INDEX_SIZE);
+    if (engine->cach == NULL) return NULL;
     for(int i = 0; i < WRITER_BUFFS; i++){
         byte_buffer * buffer = create_buffer(MEMTABLE_SIZE*1.5);
+        if (buffer == NULL) return NULL;
         insert_struct(engine->write_pool,buffer);
     }
     byte_buffer * b=  request_struct(engine->write_pool);
     engine->w = init_WAL(b);
+    if (engine->w == NULL) return NULL;
     if (engine->meta->shutdown_status !=0){
         restore_state(engine,1); /*change 1 to a variable when implementing error system. also remeber
         the stray skipbufs inside this function skipbuf*/
     }
-
+    engine->error_code = OK;
     return engine;
 }
 int write_record(storage_engine* engine ,db_unit key, db_unit value){
-    if (key.entry== NULL) return -1;
+    if (key.entry== NULL || value.entry == NULL ) return -1;
     int success = write_WAL(engine->w, key, value);
-    if (success  == -1) {
+    if (success  == FAILED_TRANSCATION) {
         fprintf(stdout, "WARNING: transcantion failure \n");
-        exit(EXIT_FAILURE);
+        return FAILED_TRANSCATION;
     }
     if (engine->table[CURRENT_TABLE]->bytes + 4 + key.len + value.len >=  MEMTABLE_SIZE){
         lock_table(engine);
@@ -215,6 +234,10 @@ char * disk_read(storage_engine * engine, const char * keyword){
         block_index * index = at(sst->block_indexs, index_block);
         
         cache_entry * c = retrieve_entry(engine->cach, index, sst->file_name);
+        if (c == NULL ){
+            engine->error_code = INVALID_DATA;
+            return NULL;
+        }
         int k_v_array_index = json_b_search(c->ar, keyword);
         if (k_v_array_index== -1) continue;
 
@@ -278,6 +301,7 @@ static void seralize_table(SkipList * list, byte_buffer * buffer, sst_f_inf * s)
         num_entries++;
     }
     memcpy(&buffer->buffy[num_entry_loc], &num_entries, 2);
+    b.len = sum;
     build_index(s, &b,buffer, num_entries, num_entry_loc);
     memcpy(&s->max, last_entry.entry, last_entry.len);
     grab_time_char(s->timestamp);
@@ -298,12 +322,15 @@ static int flush_table(storage_engine * engine){
     if (sst == NULL){
         meta->sst_files[0]->len --;
         sst = create_sst_file_info(NULL, 0, NUM_WORD, table->filter);
+        if (sst == NULL) return NULL;
         insert(meta->sst_files[0],sst);
         sst = at(meta->sst_files[0], meta->sst_files[0]->len-1);
     }
     else{
         sst->mem_store = calloc_arena(4096);
+        if (sst->mem_store == NULL) return-1;
         sst->block_indexs = List(0, sizeof(block_index), true);
+        if (sst->block_indexs == NULL) return -1;
         sst->filter = table->filter;
     }
     if (table->bytes <= 0) {

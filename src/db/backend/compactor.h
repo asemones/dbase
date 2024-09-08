@@ -136,6 +136,7 @@ void generate_random_filename(char *filename, size_t length) {
 }
 compact_manager * init_cm(meta_data * meta, cache * c){
     compact_manager * manager = (compact_manager*)wrapper_alloc((sizeof(compact_manager)), NULL,NULL);
+    if (manager == NULL) return NULL;
     for (int i = 0;  i < NUM_THREADP ;i++){
         manager->pool[i] = thread_Pool(NUM_THREAD, 0);
     }
@@ -160,7 +161,9 @@ compact_manager * init_cm(meta_data * meta, cache * c){
         insert_struct(manager->big_buffer_pool, create_buffer(MB));
     }   
     manager->c = c;
-    
+    if (manager->compact_pool == NULL  || manager->arena_pool == NULL || manager->big_buffer_pool == NULL || manager->page_buffer_pool == NULL ){
+        return NULL;
+    }
     
 
     return manager;
@@ -236,6 +239,12 @@ int write_blocks_to_file(byte_buffer *dest_buffer, sst_f_inf* curr_sst, int *wri
         write_buffer(dest_buffer, (char*)&ind->num_keys, 2);
         keys = dump_list_ele(entrys, &write_db_entry, dest_buffer, ind->num_keys, keys);
         grab_min_b_key(ind, dest_buffer, loc);
+        if (is_avx_supported()){
+            ind->checksum =  crc32_avx2(buf_ind(dest_buffer, loc), ind->len);
+        }
+        else{
+            ind->checksum = crc32(buf_ind(dest_buffer, loc), ind->len);
+        }
         int bytes_to_skip = GLOB_OPTS.BLOCK_INDEX_SIZE - (dest_buffer->curr_bytes - loc);
         skipped += bytes_to_skip;
         dest_buffer->curr_bytes += bytes_to_skip;
@@ -272,13 +281,21 @@ block_index init_block(arena * mem_store, size_t* off_track){
 
 
 /*min key copying screwed up*/
-void merge_tables(compact_infos** compact, byte_buffer *dest_buffer, compact_job * job, arena *a, cache * c) {
+int merge_tables(compact_infos** compact, byte_buffer *dest_buffer, compact_job * job, arena *a, cache * c) {
     sst_iter its[20];
     frontier *pq = Frontier(sizeof(merge_data), 0, &compare_merge_data);
+    if (pq == NULL) return STRUCT_NOT_MADE;
     list * entrys = List(0, sizeof(merge_data), false);
+    if (entrys== NULL) {
+        free_front(pq);
+        return STRUCT_NOT_MADE;
+    }
     for (int i = 0; i < job->working_files; i++) {
         init_sst_iter(&its[i], compact[i]->sst_file);
         cache_entry *ce = retrieve_entry(c, its[i].cursor.index, compact[i]->sst_file->file_name);
+        if (ce == NULL){
+            return INVALID_DATA;
+        }
         its[i].cursor.arr = ce->ar;
         merge_data first_entry = next_key_block(&its[i], c);
         first_entry.index = i;
@@ -299,6 +316,7 @@ void merge_tables(compact_infos** compact, byte_buffer *dest_buffer, compact_job
     sprintf(curr_sst.file_name, "in_prog_sst_%zu_%zu", job->id + job->new_sst_files->len, job->end_level);
 
     FILE * curr_file = fopen(curr_sst.file_name, "wb");
+    if (curr_file == NULL) return FAILED_OPEN;
 
     block_index current_block = init_block(curr_sst.mem_store, &sst_offset_tracker);
     
@@ -365,6 +383,7 @@ void merge_tables(compact_infos** compact, byte_buffer *dest_buffer, compact_job
 
             sprintf(curr_sst.file_name, "in_prog_sst_%zu_%zu", job->id + job->new_sst_files->len, job->end_level);
             curr_file = fopen(curr_sst.file_name, "wb");
+            if (curr_file == NULL) return FAILED_OPEN;
             written_block_pointer =0;
             current_block = init_block(curr_sst.mem_store, &sst_offset_tracker);
         }
@@ -394,6 +413,7 @@ void merge_tables(compact_infos** compact, byte_buffer *dest_buffer, compact_job
 
     free_front(pq);
     free_list(entrys, NULL);
+    return 0; //INVALID_DATA is 0 so default is 1 
 }
 
 int calculate_overlap(char *min1, char *max1, char *min2, char *max2) {  
@@ -479,7 +499,10 @@ static void compact_one_table(compact_manager * cm, size_t start_level,  size_t 
     job->maxiumum_file_size = GLOB_OPTS.SST_TABLE_SIZE; // CHANGE THIS AFTER TESTING
     job->id = index *targ_level  - index ;
     job->search_level = search_level;
-    merge_tables (compact, dest_buffer, job,a, cm->c);
+    int result = merge_tables (compact, dest_buffer, job,a, cm->c);
+    if (result == INVALID_DATA){
+        return;
+    }
     job->status = COMPACTION_SUCCESS;
     integrate_new_tables(cm, job, indexs);
     free_list(indexs, NULL);

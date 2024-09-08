@@ -21,13 +21,15 @@ void certify_babybase(storage_engine * l) {
         
         k.entry =expected_key;
         v.entry = expected_value;
-
         if (i % 3 == 0) {
             sprintf(expected_key, "common%d", i / 3);
             sprintf(expected_value, "second_value%d", i / 3);  
         } else {
             sprintf(expected_key, "key%d", i);
             sprintf(expected_value, "value%d", i);
+        }
+        if (k.entry == "common_1101"){
+            fprintf(stdout, "no");
         }
         
         char * value = read_record(l, expected_key);

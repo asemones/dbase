@@ -33,6 +33,7 @@ void test_use_and_load(void){
     destroy_meta_data ("meta.bin", "bloom.bin", meta);
 
     meta = load_meta_data("meta.bin", "bloom.bin");
+    TEST_ASSERT_NOT_NULL(meta);
     TEST_ASSERT_EQUAL_INT(100, meta->num_sst_file);
     TEST_ASSERT_EQUAL_INT(1000, meta->file_ptr);
     TEST_ASSERT_EQUAL_INT(1000, meta->db_length);

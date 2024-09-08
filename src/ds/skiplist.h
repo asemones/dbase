@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include "byte_buffer.h"
 #include "../db/backend/key-value.h"
+#include "../util/error.h"
 
 #pragma once
 
@@ -21,10 +22,11 @@ typedef struct SkipList {
 } SkipList;
 db_unit dummy = {0, NULL};
 
-void insert_list(SkipList* list, db_unit key, db_unit value);
+int insert_list(SkipList* list, db_unit key, db_unit value);
 
 Node* createNode(int level, db_unit key, db_unit value) {
     Node* node = (Node*)malloc(sizeof(Node) + level * sizeof(Node*));
+    if (node == NULL) return NULL;
     node->key = key;
     node->value = value;
     for (int i = 0; i < level; i++) {
@@ -35,9 +37,14 @@ Node* createNode(int level, db_unit key, db_unit value) {
 
 SkipList* createSkipList(int (*compare)(const void*, const void*)) {
     SkipList* list = (SkipList*)malloc(sizeof(SkipList));
+    if (list == NULL) return NULL;
     list->level = 1;
     list->compare = compare;
     list->header = createNode(MAX_LEVEL, dummy, dummy);
+    if (list->header == NULL){
+        free(list);
+        return NULL;
+    }
     return list;
 }
 
@@ -63,7 +70,7 @@ int skip_from_stream(SkipList * s, byte_buffer * stream){
     return ret;
 }
 
-void insert_list(SkipList* list, db_unit key, db_unit value) {
+int insert_list(SkipList* list, db_unit key, db_unit value) {
     Node* update[MAX_LEVEL];
     Node* x = list->header;
     for (int i = list->level - 1; i >= 0; i--) {
@@ -82,10 +89,14 @@ void insert_list(SkipList* list, db_unit key, db_unit value) {
     }
 
     Node* newNode = createNode(level, key, value );
+    if (newNode == NULL){
+        return STRUCT_NOT_MADE;
+    }
     for (int i = 0; i < level; i++) {
         newNode->forward[i] = update[i]->forward[i];
         update[i]->forward[i] = newNode;
     }
+    return 0;
 }
 
 Node* search_list(SkipList* list, const void* key) {

@@ -104,7 +104,7 @@ void test_write_WAL(void) {
     int bytes_written = write_WAL(test_wal, test_key, test_value);
 
    
-    TEST_ASSERT_GREATER_THAN(0, bytes_written);
+    TEST_ASSERT_EQUAL_INT(0,bytes_written);
     TEST_ASSERT_EQUAL_size_t(11, test_wal->len); 
     end_test();
 }

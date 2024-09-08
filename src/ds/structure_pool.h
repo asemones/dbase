@@ -20,6 +20,7 @@ typedef struct struct_pool{
 
 struct_pool * create_pool(size_t capacity){
     struct_pool * pool = (struct_pool*)wrapper_alloc((sizeof(struct_pool)), NULL,NULL);
+    if (pool == NULL) return NULL;
     pool->pool = (void**)wrapper_alloc((sizeof(void*) * capacity), NULL,NULL);
     pool->free_list= (bool*)wrapper_alloc((sizeof(bool) * capacity), NULL,NULL);
     pool->size = 0;
@@ -28,6 +29,16 @@ struct_pool * create_pool(size_t capacity){
     for (int i = 0; i < capacity; i++){
         pool->pool[i] = NULL;
         pool->free_list[i] = false;
+    }
+    if (pool->pool == NULL || pool->free_list == NULL){
+        if (pool->pool != NULL){
+            free(pool->pool);
+        }
+        else if (pool->free_list != NULL){
+            free(pool->free_list);
+        }
+        free(pool);
+        return NULL;
     }
     return pool;
 }

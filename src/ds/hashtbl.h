@@ -101,6 +101,7 @@ uint64_t fnv1a_64(const void *data, size_t len) {
 }
 dict* Dict(){
     dict *table = (dict*)wrapper_alloc((sizeof(dict)), NULL,NULL);
+    if (table == NULL) return NULL;
     table->capacity = KEY_AMOUNT;
     table->size = 0;
     table->keys = calloc(KEY_AMOUNT, sizeof(void*));
@@ -115,6 +116,7 @@ kv KV(void* k, void* v){
 }
 kv* dynamic_kv(void* k, void* v){
     kv * myKv = (kv *)wrapper_alloc((sizeof(kv)), NULL,NULL);
+    if (myKv == NULL) return NULL;
     myKv->value = v;
     myKv->key = k;
     return myKv;

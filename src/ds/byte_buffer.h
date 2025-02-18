@@ -58,7 +58,7 @@ int buffer_resize(byte_buffer * b, size_t min_size){
     b->max_bytes = new_size;
     return b->max_bytes;
 }
-int write_buffer(byte_buffer * buffer, char * data, size_t size){
+int write_buffer(byte_buffer * buffer, void* data, size_t size){
     int ret = 0;
     if (buffer->curr_bytes + size >= buffer->max_bytes){
         ret=  buffer_resize(buffer, size );

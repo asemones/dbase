@@ -40,6 +40,7 @@ struct_pool * create_pool(size_t capacity){
         free(pool);
         return NULL;
     }
+
     return pool;
 }
 void insert_struct(struct_pool * pool, void * data){
@@ -61,7 +62,7 @@ void * request_struct(struct_pool * pool){
         return NULL;
     }
     void * ret =  NULL;
-    for (int i = pool->size - 1; i >= 0; i--){
+    for (int i = pool->capacity - 1; i >= 0; i--){
         if (pool->free_list[i] == false) continue;
         pool->free_list[i] = false;
         ret = pool->pool[i];
@@ -73,12 +74,14 @@ void * request_struct(struct_pool * pool){
 }
 void return_struct(struct_pool * pool, void * struct_ptr, void reset_func(void*)){
     lock(&pool->write_lock);
-    for (int i = pool->size - 1; i >= 0; i--){
-        if (pool->pool[i] != struct_ptr) continue;
-        pool->free_list[i] = true;
-        if (reset_func != NULL) reset_func(struct_ptr); 
-        break;
-    }   
+    for (size_t i = 0; i < pool->capacity; i++) {
+        if (pool->pool[i] == struct_ptr) {
+            pool->free_list[i] = true;
+            if (reset_func != NULL)
+                reset_func(struct_ptr);
+            break;
+        }
+    }  
     pool->size++;
     unlock(&pool->write_lock);
 }
@@ -90,5 +93,6 @@ struct_pool * free_pool(struct_pool * pool, void free_func(void*)){
     free(pool);
     pool = NULL;
     return pool;
+
 }
 #endif

@@ -135,12 +135,24 @@ void gen_sst_fname(size_t id, size_t level, char * buffer){
     snprintf(buffer, 100, "sst_%zu_%zu", id, level);
 }
 
-void grab_time_char(const char * buffer){
-    time_t rawtime;
-    time(&rawtime);
-    struct tm *timeinfo = localtime(&rawtime);
-    strftime((char*)buffer, 20,"%Y-%m-%d %H:%M:%S", timeinfo);
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/time.h>
+#include <time.h>
+#include <string.h>
+
+void grab_time_char(char *buffer) {
+
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+
+    struct tm tmval;
+    localtime_r(&tv.tv_sec, &tmval);
+    strftime(buffer, 20, "%Y-%m-%d %H:%M:%S", &tmval);
+
+    snprintf(buffer + strlen(buffer), 10, ".%06ld", (long)tv.tv_usec);
 }
+
 void grab_time(byte_buffer * buf){
     time_t rawtime;
     time(&rawtime);

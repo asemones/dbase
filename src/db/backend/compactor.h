@@ -1,5 +1,4 @@
-#include <stdio.h>
-#include "lsm.h"
+#include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include "../../ds/byte_buffer.h"
@@ -14,14 +13,16 @@
 #include "option.h"
 #include "iter.h"
 #include "../../ds/threadpool.h"
+#include <time.h>
+#include <unistd.h> 
+#include "macro_list.h"
 #ifndef COMPACTOR_H
 #define COMPACTOR_H
 #define NUM_THREADP 1
 #define NUM_COMPACT 10
 #define MAX_COMPARE 5
-#define MAX_KEY_SIZE 1024
 #define NUM_META_DATA 3
-#define NUM_THREAD 3
+#define NUM_THREAD 10
 #define MAX_SST_LENGTH 100000000
 #define VICTIM_INDEX 1
 #define MB 1048576
@@ -31,7 +32,6 @@
 #define END_OF_BLOCK 0x04
 #define NUM_PAGE_BUFFERS 50
 #define NUM_BIG_BUFFERS 5
-#define TEST_MAX_FILE_SIZE 64*KB
 typedef struct compact_infos{
     char time_stamp[20];
     byte_buffer * buffer;
@@ -44,28 +44,38 @@ enum compact_status{
     COMPACTION_IN_PROGRESS,
     COMPACTION_NOT_STARTED,
 };
-typedef struct compact_job{
+/*i was very short sighted and created this struct, and frankly i do not want to change my 20+ tests on this
+so i have two different "copies", one for the pq and one for the regular system*/
+
+typedef struct compact_job_internal{
     size_t id;
-    enum compact_status status;
-    list * new_sst_files; // of type sst_f_inf. A temp holding ground
-   // list * bloom_filters; // of type bloom_filter, added from the compactation
+    size_t index;
     size_t start_level;
     size_t end_level;
     size_t working_files;
-    size_t maxiumum_file_size;
     size_t search_level;
-
-} compact_job;
+    sst_f_inf * target;
+    list * to_merge;
+    list * new_sst_files;
+} compact_job_internal;
 typedef struct compact_manager{
     thread_p * pool [NUM_THREADP]; // just use one pool for now
     struct_pool * compact_pool;
     list ** sst_files;
     struct_pool * arena_pool;
     size_t base_level_size;
+    pthread_mutex_t * wait_mtx;
+    pthread_cond_t * wait;
+    pthread_mutex_t compact_lock;
+    pthread_mutex_t  resource_lock;
+    pthread_cond_t resource_sig;
     size_t min_compact_ratio;
     struct_pool * page_buffer_pool;
     struct_pool * big_buffer_pool;
-    list * bloom_filters;
+    frontier * job_queue;
+    bool check_meta_cond;
+    bool lvl0_job_running;
+    bool exit;
     cache * c; // of type bloom_filter, FROM META DATA
 }compact_manager;
 
@@ -104,35 +114,33 @@ If needed utilize a thread from the threadpool to complete the job
 /*
 */
 void free_cm(compact_manager * manager);
-static void integrate_new_tables(compact_manager *cm, compact_job *job, list *indexs) ;
+static void integrate_new_tables(compact_manager *cm, compact_job_internal *job, list *indexs) ;
 compact_infos* create_ci(size_t page_size){
     compact_infos *ci = (compact_infos*)wrapper_alloc((sizeof(compact_infos)), NULL,NULL);
     ci->buffer = create_buffer(page_size);
     ci->complete = false;
     return ci;
 }
-compact_job * create_compact_job(){
-    compact_job * j = (compact_job*)wrapper_alloc((sizeof(compact_job)), NULL,NULL);
-    j->status = COMPACTION_NOT_STARTED;
-    j->new_sst_files = List(0, sizeof(sst_f_inf), false);
-    return j;
-}
-void generate_random_filename(char *filename, size_t length) {
-    const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    size_t charset_size = sizeof(charset) - 1;
-    srand(time(NULL));
 
-    for (size_t i = 0; i < length - 21; i++) {
-        filename[i] = charset[rand() % charset_size];
+/*sets the cm with the most re*/
+void set_cm_sst_files(meta_data * meta, compact_manager * cm){
+    for (int i =0; i < MAX_LEVELS; i++){
+        if (meta->sst_files[i] == NULL) continue;
+        cm->sst_files[i]= thread_safe_list(0, sizeof (sst_f_inf), false);
+        for (int j = 0; j < meta->sst_files[i]->len; j++){
+            sst_f_inf f;
+            sst_f_inf * sst_to_copy=  at(meta->sst_files[i],j);
+            int ret =sst_deep_copy(sst_to_copy, &f);
+            if (ret !=OK) return;
+            insert(cm->sst_files[i], &f);
+        }
     }
-    filename[length - 1] = '\0';
+}
+int compare_jobs(const void * job1, const void * job2){
+    const compact_job_internal * job_1 = job1;
+    const compact_job_internal * job_2 = job2;
 
-    // Add a timestamp to ensure uniqueness
-    time_t t = time(NULL);
-    struct tm *tm_info = localtime(&t);
-    char timestamp[20];
-    strftime(timestamp, 20, "_%Y%m%d%H%M%S", tm_info);
-    strcat(filename, timestamp);
+    return job_1->id > job_2->id;
 }
 compact_manager * init_cm(meta_data * meta, cache * c){
     compact_manager * manager = (compact_manager*)wrapper_alloc((sizeof(compact_manager)), NULL,NULL);
@@ -145,6 +153,7 @@ compact_manager * init_cm(meta_data * meta, cache * c){
         insert_struct(manager->compact_pool, create_ci(GLOB_OPTS.BLOCK_INDEX_SIZE));
     }
     manager->sst_files = meta->sst_files;
+    //set_cm_sst_files(meta, manager);
     manager->base_level_size = meta->base_level_size;
     manager->min_compact_ratio = meta->min_c_ratio; 
     manager->arena_pool = create_pool(NUM_COMPACT*NUM_THREAD*NUM_THREADP);
@@ -164,27 +173,23 @@ compact_manager * init_cm(meta_data * meta, cache * c){
     if (manager->compact_pool == NULL  || manager->arena_pool == NULL || manager->big_buffer_pool == NULL || manager->page_buffer_pool == NULL ){
         return NULL;
     }
-    
-
+    manager->job_queue = Frontier(sizeof(compact_job_internal), false, &compare_jobs);
+    pthread_mutex_init(&manager->compact_lock, NULL);
+    manager->check_meta_cond = false;
+    manager->exit = false;
+    manager->lvl0_job_running= false;
+    pthread_mutex_init(&manager->resource_lock, NULL);
+    pthread_cond_init(&manager->resource_sig, NULL);
     return manager;
 }
-struct tm parse_timestamp(const char *timestamp) {
-    struct tm tm;
-    memset(&tm, 0, sizeof(struct tm));
-    
-    // Assume the timestamp format is "YYYY-MM-DD HH:MM:SS"
-    if (strptime(timestamp, "%Y-%m-%d %H:%M:%S", &tm) == NULL) {
-        fprintf(stderr, "Failed to parse timestamp: %s\n", timestamp);
-        return tm;
-    }
 
-    return tm;
-}
-int compare_time_stamp(const char * time1, const char * time2){
-    if (time1 == NULL || time2 == NULL) return 0;
-    struct tm tm1 = parse_timestamp(time1);
-    struct tm tm2 = parse_timestamp(time2);
-    return difftime (mktime(&tm1), mktime(&tm2));
+int compare_time_stamp(struct timeval t1, struct timeval t2){
+    if (t1.tv_sec < t2.tv_sec) return -1;    
+    else if (t1.tv_sec > t2.tv_sec) return 1;
+
+    if (t1.tv_usec < t2.tv_usec) return -1;
+    else if (t1.tv_usec > t2.tv_usec) return 1;
+    return 0;
 }
 
 static int entry_len(merge_data entry){
@@ -211,7 +216,7 @@ merge_data discard_same_keys(frontier *pq, sst_iter *its, cache *c, merge_data i
         }
 
         
-        if (strncmp(current.key->entry, TOMB_STONE, current.key->len) != 0 && compare_time_stamp(its[(int)current.index].file->timestamp, its[(int)best_entry.index].file->timestamp) > 0) {
+        if (strncmp(current.key->entry, TOMB_STONE, current.key->len) != 0 && compare_time_stamp(its[(int)current.index].file->time, its[(int)best_entry.index].file->time) > 0) {
             best_entry = current;
         }
     }
@@ -240,10 +245,10 @@ int write_blocks_to_file(byte_buffer *dest_buffer, sst_f_inf* curr_sst, int *wri
         keys = dump_list_ele(entrys, &write_db_entry, dest_buffer, ind->num_keys, keys);
         grab_min_b_key(ind, dest_buffer, loc);
         if (is_avx_supported()){
-            ind->checksum =  crc32_avx2(buf_ind(dest_buffer, loc), ind->len);
+            ind->checksum =  crc32_avx2((uint8_t*)buf_ind(dest_buffer, loc), ind->len);
         }
         else{
-            ind->checksum = crc32(buf_ind(dest_buffer, loc), ind->len);
+            ind->checksum = crc32((uint8_t*)buf_ind(dest_buffer, loc), ind->len);;
         }
         int bytes_to_skip = GLOB_OPTS.BLOCK_INDEX_SIZE - (dest_buffer->curr_bytes - loc);
         skipped += bytes_to_skip;
@@ -251,9 +256,11 @@ int write_blocks_to_file(byte_buffer *dest_buffer, sst_f_inf* curr_sst, int *wri
         (*written_block_pointer)++;
     }
     fwrite(dest_buffer->buffy, dest_buffer->curr_bytes, 1, curr_file);
+    fflush(curr_file);
+    fsync(curr_file->_fileno);
     return skipped;
 }
-void process_sst(byte_buffer *dest_buffer, sst_f_inf *curr_sst, FILE *curr_file, compact_job*job, int sst_b_count) {
+void process_sst(byte_buffer *dest_buffer, sst_f_inf *curr_sst, FILE *curr_file, compact_job_internal*job, int sst_b_count) {
     fseek(curr_file, curr_sst->block_start, SEEK_SET);
     reset_buffer(dest_buffer);
     block_index * b_0= at(curr_sst->block_indexs,0);
@@ -263,11 +270,13 @@ void process_sst(byte_buffer *dest_buffer, sst_f_inf *curr_sst, FILE *curr_file,
     }
     copy_filter(curr_sst->filter, dest_buffer);
     fwrite(dest_buffer->buffy, dest_buffer->curr_bytes, 1, curr_file);
+    fflush(curr_file);
+    fsync(curr_file->_fileno);
     fclose(curr_file);
     reset_buffer(dest_buffer);
-    
+    //curr_sst->in_cm_job = true;
     curr_sst->length = sst_b_count;
-    grab_time_char(curr_sst->timestamp);
+    gettimeofday(&curr_sst->time, NULL);
     insert(job->new_sst_files, curr_sst);
     memset(curr_sst, 0, sizeof(*curr_sst));
 }
@@ -281,8 +290,8 @@ block_index init_block(arena * mem_store, size_t* off_track){
 
 
 /*min key copying screwed up*/
-int merge_tables(compact_infos** compact, byte_buffer *dest_buffer, compact_job * job, arena *a, cache * c) {
-    sst_iter its[20];
+int merge_tables(byte_buffer *dest_buffer, compact_job_internal * job, arena *a, cache * c) {
+    sst_iter  * its = malloc(sizeof(sst_iter)* job->to_merge->len);
     frontier *pq = Frontier(sizeof(merge_data), 0, &compare_merge_data);
     if (pq == NULL) return STRUCT_NOT_MADE;
     list * entrys = List(0, sizeof(merge_data), false);
@@ -290,10 +299,12 @@ int merge_tables(compact_infos** compact, byte_buffer *dest_buffer, compact_job 
         free_front(pq);
         return STRUCT_NOT_MADE;
     }
-    for (int i = 0; i < job->working_files; i++) {
-        init_sst_iter(&its[i], compact[i]->sst_file);
-        cache_entry *ce = retrieve_entry(c, its[i].cursor.index, compact[i]->sst_file->file_name);
+    for (int i = 0; i < job->to_merge->len; i++) {
+        sst_f_inf * sst = at(job->to_merge,i);
+        init_sst_iter(&its[i], sst);
+        cache_entry *ce = retrieve_entry(c, its[i].cursor.index, sst->file_name);
         if (ce == NULL){
+            free(its);
             return INVALID_DATA;
         }
         its[i].cursor.arr = ce->ar;
@@ -312,8 +323,8 @@ int merge_tables(compact_infos** compact, byte_buffer *dest_buffer, compact_job 
    
     size_t sst_offset_tracker = 0;
     sst_f_inf  curr_sst= create_sst_empty();
-    curr_sst.block_start = job->maxiumum_file_size;
-    sprintf(curr_sst.file_name, "in_prog_sst_%zu_%zu", job->id + job->new_sst_files->len, job->end_level);
+    generate_unique_sst_filename(curr_sst.file_name, MAX_F_N_SIZE, job->end_level);
+    curr_sst.block_start = GLOB_OPTS.SST_TABLE_SIZE;
 
     FILE * curr_file = fopen(curr_sst.file_name, "wb");
     if (curr_file == NULL) return FAILED_OPEN;
@@ -334,10 +345,6 @@ int merge_tables(compact_infos** compact, byte_buffer *dest_buffer, compact_job 
             enqueue(pq, &next_entry);
         }
         merge_data best_entry = discard_same_keys(pq, its, c, current);
-        
-        if (strcmp (best_entry.key->entry,"key34")==0 ){
-            fprintf(stdout, "no\n");
-        }
         
         if (block_b_count + entry_len(best_entry) > GLOB_OPTS.BLOCK_INDEX_SIZE){
             complete_block(&curr_sst, &current_block, block_b_count);
@@ -370,7 +377,7 @@ int merge_tables(compact_infos** compact, byte_buffer *dest_buffer, compact_job 
             }
             process_sst(dest_buffer, &curr_sst, curr_file, job, sst_b_count);
             curr_sst = create_sst_empty();
-            curr_sst.block_start= job->maxiumum_file_size;
+            curr_sst.block_start=  GLOB_OPTS.SST_TABLE_SIZE;
            
             block_b_count = 2;
           
@@ -381,7 +388,7 @@ int merge_tables(compact_infos** compact, byte_buffer *dest_buffer, compact_job 
             sst_b_count = 2;
             sst_offset_tracker = 0;
 
-            sprintf(curr_sst.file_name, "in_prog_sst_%zu_%zu", job->id + job->new_sst_files->len, job->end_level);
+            generate_unique_sst_filename(curr_sst.file_name, MAX_F_N_SIZE, job->end_level);
             curr_file = fopen(curr_sst.file_name, "wb");
             if (curr_file == NULL) return FAILED_OPEN;
             written_block_pointer =0;
@@ -413,6 +420,7 @@ int merge_tables(compact_infos** compact, byte_buffer *dest_buffer, compact_job 
 
     free_front(pq);
     free_list(entrys, NULL);
+    free(its);
     return 0; //INVALID_DATA is 0 so default is 1 
 }
 
@@ -427,22 +435,8 @@ int calculate_overlap(char *min1, char *max1, char *min2, char *max2) {
     return 0;
 }
 
-size_t find_compact_friend(size_t curr_level, size_t start_level, char * min, char * max, list * next_level,list* indexes, size_t victim_index){
-    if (next_level == NULL) return -1;
-    for (size_t i = 0 ; i < next_level->len; i++){
-        if (curr_level == start_level && i == victim_index) continue;
-        sst_f_inf * sst = at(next_level, i);
-        if (sst == NULL) continue;
-        int score = calculate_overlap(min,max,sst->min,sst->max);
-        if (score == 0) insert(indexes, (void*)&i); 
-    }
-    return 0;
-}
-bool check_compact_condition(compact_manager * cm, size_t level_size ){
-    bool io_status = false;
-    if (io_status && level_size < (cm->base_level_size * cm->min_compact_ratio)) return 0;
-    if (level_size < cm->base_level_size) return 0;
-    return 1;
+int get_level_size(int level){
+    return (GLOB_OPTS.LEVEL_0_SIZE * GLOB_OPTS.SST_TABLE_SIZE_SCALAR) * level;
 }
 static void reset_ci(void * ci){
     compact_infos * c = (compact_infos*)ci;
@@ -451,149 +445,165 @@ static void reset_ci(void * ci){
     memset(c->time_stamp, 0, 20);
     c->sst_file = NULL;
 }
-/*need a better computation for bounds*/
-static void compact_one_table(compact_manager * cm, size_t start_level,  size_t search_level, size_t targ_level, size_t index){
-    list *start_lvl = cm->sst_files[start_level];
-    list * target_lvl = cm->sst_files[targ_level];
-    sst_f_inf * victim = at(cm->sst_files[start_level],index);
-    if (victim == NULL) return;
-    list * indexs = List(0, sizeof(size_t), false);
-    insert(indexs, &index);
-   // if (!check_compact_condition(cm, cm->sst_files[level]->len)) return;
-    int level_to_check = search_level;
-    find_compact_friend(level_to_check,start_level, victim->min, victim->max, cm->sst_files[level_to_check], indexs, index);
+/*removes the sst when target is actually the same pointer*/
+int remove_same_sst(sst_f_inf * target, list * target_lvl, int level){
+    pthread_mutex_lock(&target_lvl->write_lock);
+    char * key_to_check = target->file_name;
+    int ind;
+    /*level 0 has no gurantee of ordering*/
+    
+    ind = find_sst_file_eq_iter(target_lvl, target_lvl->len, key_to_check);
+    
 
-    if (indexs->len < 2) {
-        free_list(indexs, NULL);
-        char file_name [64];
-        memcpy(file_name, victim->file_name, strlen(victim->file_name)+1);
-        file_name[strlen(file_name)-1] = (const char )48 + targ_level;
-        rename(victim->file_name,file_name);
-        victim->file_name[strlen(victim->file_name)-1] = (const char )48 + targ_level;
-        insert(target_lvl, victim);
-        remove_at(start_lvl,index); 
-
-        /*case where the file is just shifting downwards*/
-        return;
+    
+    if (ind < 0) {
+        pthread_mutex_unlock(&target_lvl->write_lock);
+        return ind;
     }
-    compact_infos * compact [10];
-    /*figure out whether to deal with sst_f or block_indexs. maybe jsut use the block indexes? easier to chunk operaitosn*/
-    compact[0] = request_struct(cm->compact_pool);
-    compact[0]->sst_file = victim;
-    compact[0]->complete = false;
-    for (int i = 1 ; i <indexs->len; i++ ){
-        compact[i] = request_struct(cm->compact_pool);
-        size_t index=   *(size_t*)at(indexs,i);
-        compact[i]->sst_file = at(cm->sst_files[level_to_check],index);
-        compact[i]->complete = false; 
+    sst_f_inf * candiate = internal_at_unlocked(target_lvl, ind);
+    if (!sst_equals(candiate, target)){
+        pthread_mutex_unlock(&target_lvl->write_lock);
+        return -1;
+    } /*we compare the block index lists because that is a pointer. since we are dealing with structs, we cannot just compare the structs, as they may differ */
+    fprintf(stdout, "removed %s in a trival move\n", candiate->file_name);
+    memset(candiate, 0, sizeof(*candiate));
+    remove_at_unlocked(target_lvl,  ind);
+    pthread_mutex_unlock(&target_lvl->write_lock);
+    return 0;
+}
 
+int remove_sst_from_list(sst_f_inf * target, list * target_lvl, int level){
+    pthread_mutex_lock(&target_lvl->write_lock);
+    char * key_to_check = target->file_name;
+    if (key_to_check == NULL) return -1;
+    int ind;
+    /*level 0 has no gurantee of ordering*/
+    
+  
+    ind = find_sst_file_eq_iter(target_lvl, target_lvl->len, key_to_check);
+  
+    if (ind < 0) {
+        pthread_mutex_unlock(&target_lvl->write_lock);
+        return ind;
+    }
+    sst_f_inf * candiate = internal_at_unlocked(target_lvl, ind);
+    if (!sst_equals(candiate, target)){
+        pthread_mutex_unlock(&target_lvl->write_lock);
+        return -1;
+    } /*we compare the block index lists because that is a pointer. since we are dealing with structs, we cannot just compare the structs, as they may differ */
+    if (!candiate->marked) remove(candiate->file_name);
+    fprintf(stdout, "removed %s\n", candiate->file_name);
+    free_sst_inf(candiate);
+    remove_at_unlocked(target_lvl,  ind);
+    pthread_mutex_unlock(&target_lvl->write_lock);
+    return 0;
+}
+
+static void compact_one_table(compact_manager * cm, compact_job_internal job,  sst_f_inf * victim){
+    if (victim == NULL) return;
+   
+    list * ssts_to_merge = job.to_merge;
+    
+    /*trival move*/
+    if (ssts_to_merge->len <= 1 && job.start_level != 0) {
+        char buf[64];
+        int res  = remove_same_sst(victim, cm->sst_files[job.start_level], job.start_level);
+        if (job.start_level >= 1){
+            int i = 0;
+        }
+        if (res >= 0){
+            res = 1;
+        }
+        else {
+            fprintf(stdout,"failed to remove %s\n", victim->file_name);
+            res = -1;
+        }
+        fprintf(stdout, "%d removed from 1\n", res);
+        generate_unique_sst_filename(buf, 64, job.end_level);
+        rename(victim->file_name, buf);
+        memset(victim->file_name, 0, strlen(victim->file_name) + 1);
+        memcpy(victim->file_name, buf, strlen(buf)+ 1);
+        merge_lists(cm->sst_files[job.end_level], job.to_merge, &cmp_sst_f_inf);
+        return;
+
+    }
+   
+    pthread_mutex_lock(&cm->resource_lock);
+    while (cm->arena_pool->size <=0 || cm->big_buffer_pool->size <=0){
+        pthread_cond_wait(&cm->resource_sig, &cm->resource_lock);
     }
     arena * a = request_struct(cm->arena_pool);
     reset_arena(a);
     byte_buffer * dest_buffer = request_struct(cm->big_buffer_pool);
-    compact_job * job = create_compact_job();
-    job->status = COMPACTION_IN_PROGRESS;
-    job->start_level = start_level;
-    job->end_level = targ_level;
-    job->working_files = indexs->len;
-    job->maxiumum_file_size = GLOB_OPTS.SST_TABLE_SIZE; // CHANGE THIS AFTER TESTING
-    job->id = index *targ_level  - index ;
-    job->search_level = search_level;
-    int result = merge_tables (compact, dest_buffer, job,a, cm->c);
+    pthread_mutex_unlock(&cm->resource_lock);
+    int result = merge_tables (dest_buffer, &job,a, cm->c);
     if (result == INVALID_DATA){
+        return_struct(cm->arena_pool, a, &reset_arena);
+        return_struct(cm->big_buffer_pool, dest_buffer, &reset_buffer);
+        pthread_cond_signal(&cm->resource_sig);
+        if(job.start_level == 0){
+            cm->lvl0_job_running = false;
+        }
+      
         return;
     }
-    job->status = COMPACTION_SUCCESS;
-    integrate_new_tables(cm, job, indexs);
-    free_list(indexs, NULL);
-    for (int i = 0; i < job->working_files; i++)
-    {
-        return_struct(cm->compact_pool, compact[i], &reset_ci);
-    }
+    integrate_new_tables(cm, &job, ssts_to_merge);
+    free_list(ssts_to_merge, NULL);
+
+    pthread_mutex_lock(&cm->resource_lock);
     return_struct(cm->arena_pool, a, &reset_arena);
     return_struct(cm->big_buffer_pool, dest_buffer, &reset_buffer);
+    pthread_cond_signal(&cm->resource_sig);
+    pthread_mutex_unlock(&cm->resource_lock);
+    if(job.start_level == 0){
+        cm->lvl0_job_running = false;
+    }
     return;
 }
+static void integrate_new_tables(compact_manager *cm, compact_job_internal *job, list *old_ssts) {
+    pthread_mutex_lock(&cm->compact_lock);
 
-static void remove_and_rename(sst_f_inf *old, sst_f_inf *new, const char level) {
-    remove(old->file_name);
-    old->file_name[strlen(old->file_name) -1] = level;
-    rename(new->file_name, old->file_name);
-    memcpy(new->file_name, old->file_name, strlen(old->file_name) + 1);
-    //free_sst_inf(old);
-}
-static void handle_first_element(compact_manager *cm, size_t index,  list * next_level, list * old_level, compact_job* job){
-    sst_f_inf *old_first = at(old_level, index);
-    sst_f_inf *new_first = at(job->new_sst_files, 0);
+    list *start_level = cm->sst_files[job->start_level];
+    list *search_level = cm->sst_files[job->search_level];
+    list * end_level= cm->sst_files[job->end_level];
 
-    remove_and_rename(old_first, new_first, (const char )48 + job->end_level);
-    insert(next_level, new_first);
-}
-static void remove_changed_ssts(list *old_level, compact_job *job, list * indexes) {
-    for (int i = old_level->len+1; i > 0; i--) {
-        size_t real_index = i - 1;
-        if (!check_in_list(indexes, &real_index, &compare_size_t)) continue;
-        sst_f_inf *old = at(old_level, real_index);
-        if (old!= NULL && old->mem_store != NULL) free_sst_inf(old);
-        old = NULL;
-        remove_at(old_level, real_index);
+    const int victim_index= 0;
+    /*need a better system for random file names*/
+    /*remove all ssts from the search level data structure. edgecase where start != search IS covered at the first call*/
+    int yoareuseless=  0;
+    if ((remove_sst_from_list(at(old_ssts,victim_index), start_level, job->start_level)) >= 0)yoareuseless++;
+    for (int i = 0; i < old_ssts->len ;i++){
+         int res = remove_sst_from_list(at(old_ssts, i), search_level, job->search_level);
+         if (res >= 0 ) yoareuseless ++;
     }
-}
-static void integrate_new_tables(compact_manager *cm, compact_job *job, list *indexs) {
-    list *curr_level = cm->sst_files[job->start_level];
-    list * search_level = cm->sst_files[job->search_level];
-    list *next_level = List(0, sizeof(sst_f_inf), false);
-
-    //lock_everything();
-    handle_first_element(cm,*(size_t*)(at(indexs, 0)),next_level,curr_level, job);
-    list *level_to_change = next_level;
-    
-    for (size_t i = 1; i < indexs->len; i++)
-    {
-        sst_f_inf *old = at(search_level, *(size_t*)at(indexs, i));
-        sst_f_inf *new = at(job->new_sst_files, i);
-        if (new == NULL){
-            //remove(old->file_name);
-            break;
-        }
-
-        remove_and_rename(old, new, (const char )48 + job->end_level);
-        insert(level_to_change, new);
+    /*case where multiple level 0 ssts were selected.*/
+    for (int i = 0; i < old_ssts->len ; i++){
+        int res = remove_sst_from_list(at(old_ssts, i), cm->sst_files[0],0);
+        if (res>= 0 ) yoareuseless ++;
 
     }
-    for (size_t i= 0; i < search_level->len; i++){
-        if (check_in_list(indexs, &i, &compare_size_t)) continue;
-        insert(level_to_change, at(search_level, i));
+    //job->new_sst_files are in order, so we can just do a 2 way merge with the end level*/
+    if (yoareuseless < old_ssts->len){
+        int l = 0;
     }
-    if (job->start_level != job->search_level) {
-       remove_at(curr_level, *(size_t*)(at(indexs, 0)));
-    }
-    //unlock_everything();
-    for (int i = indexs->len; i < job->new_sst_files->len; i++) {
-        sst_f_inf *new = at(job->new_sst_files, i);
+    fprintf(stdout, "%d removed from %d\n", yoareuseless, old_ssts->len);
+    merge_lists(end_level, job->new_sst_files ,&cmp_sst_f_inf);
 
-        char buf[128];
-        gen_sst_fname(level_to_change->len, job->end_level, buf);
-        rename(new->file_name, buf);
-        memcpy(new->file_name, buf, strlen(buf) + 1);
-
-      
-        insert(level_to_change, new);   
-    }
-    remove_changed_ssts(search_level, job, indexs);
     free_list(job->new_sst_files, NULL);
-
-    cm->sst_files[job->end_level] = level_to_change;
     
-
+    pthread_mutex_unlock(&cm->compact_lock);
     return;
 }
-
 void free_ci(void * ci){
     compact_infos * c = (compact_infos*)ci;
     if (c == NULL) return;
     if (c->buffer != NULL) free_buffer(c->buffer);
     free(c);
+}
+void shutdown_cm(compact_manager * cm){
+    cm->exit = true;
+    cm->check_meta_cond = true;
+    pthread_cond_signal(cm->wait);
 }
 void free_cm(compact_manager * manager){
     for (int i = 0; i < NUM_THREADP; i++){
@@ -603,7 +613,11 @@ void free_cm(compact_manager * manager){
     free_pool(manager->arena_pool, &free_arena);
     free_pool(manager->page_buffer_pool, &free_buffer);
     free_pool(manager->big_buffer_pool, &free_buffer);
-    manager->bloom_filters = NULL;
+    free_front(manager->job_queue);
+    pthread_mutex_destroy(&manager->compact_lock);
+    pthread_mutex_destroy(&manager->resource_lock);
+    pthread_cond_destroy(&manager->resource_sig);
     free(manager);
+    manager = NULL;
 }
 #endif

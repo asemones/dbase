@@ -8,10 +8,7 @@
 
 #ifndef LIST_H
 #define LIST_H
-#define rw_mutex pthread_rwlock_t
-#define r_lock pthread_rwlock_rdlock
-#define w_lock pthread_rwlock_wrlock
-#define unlock pthread_mutex_unlock
+
 /**
 * Simple List Structure
 * @param arr the base dynamic array
@@ -26,7 +23,8 @@ typedef struct Lists{
     int dtS;
     bool isAlloc;
     bool thread_safe;
-    rw_mutex lock;
+    pthread_mutex_t write_lock;
+    pthread_mutex_t read_lock;
 }list;
 /**
  * @brief Struct for function pointers to use for sorting
@@ -160,7 +158,9 @@ list * thread_safe_list(int Size, int dataTypeSize, bool alloc){
     my_list->isAlloc=alloc;
     my_list->dtS = dataTypeSize;
     my_list->thread_safe = true;
-    pthread_rwlock_init(&my_list->lock, NULL);
+    pthread_mutex_init(&my_list->read_lock, NULL);
+    pthread_mutex_init(&my_list->write_lock, NULL);
+
     return my_list;
 }
 void expand(list * my_list){
@@ -179,6 +179,7 @@ void insert(list * my_list, void * element){
     if (my_list == NULL || element == NULL) {
         return;
     }
+    if (my_list->thread_safe) pthread_mutex_lock(&my_list->write_lock);
     //if (my_list->thread_safe) w_lock(&my_list->lock);
     if (my_list->len >= my_list->cap){
         expand(my_list);
@@ -186,10 +187,17 @@ void insert(list * my_list, void * element){
     //void pointers need to be typecasted, use (char*) so we start with value 1
     memmove((char *)my_list->arr + (my_list->len * my_list->dtS), element, my_list->dtS);
     my_list->len++;
-    if (my_list->thread_safe) unlock(&my_list->lock);
+    if(my_list->thread_safe) pthread_mutex_unlock(&my_list->write_lock); 
     return;
 }
-void inset_at(list * my_list, void * element, int index){
+void* internal_at_unlocked(list * my_list, int index){
+     if (my_list == NULL || index < 0 || index >= my_list->len) {
+        return NULL;
+    }
+    void * ret = (char*)my_list->arr + (index * my_list->dtS);
+    return ret;
+}
+void inset_at_unlocked(list * my_list, void * element, int index){
     if (my_list == NULL || element == NULL || index < 0 || index > my_list->cap) {
         return;
     }
@@ -197,13 +205,31 @@ void inset_at(list * my_list, void * element, int index){
         expand(my_list);
     }
     void * temp;
-    if ((temp= at(my_list,index)) !=  NULL){
+    if ((temp= internal_at_unlocked(my_list, index)) !=  NULL){
         my_list->len--;
     }
     //if (my_list->thread_safe) w_lock(&my_list->lock);
     memmove((char *)my_list->arr + index * my_list->dtS, element, my_list->dtS);
     my_list->len++;
    // unlock(&my_list->lock);
+}
+void inset_at(list * my_list, void * element, int index){
+    if (my_list == NULL || element == NULL || index < 0 || index > my_list->cap) {
+        return;
+    }
+    if (my_list->thread_safe) pthread_mutex_lock(&my_list->write_lock);
+    if (my_list->len >= my_list->cap){
+        expand(my_list);
+    }
+    void * temp;
+    if ((temp= internal_at_unlocked(my_list, index)) !=  NULL){
+        my_list->len--;
+    }
+    //if (my_list->thread_safe) w_lock(&my_list->lock);
+    memmove((char *)my_list->arr + index * my_list->dtS, element, my_list->dtS);
+    my_list->len++;
+   // unlock(&my_list->lock);
+    if(my_list->thread_safe)pthread_mutex_unlock(&my_list->write_lock); 
 }
   /*DO NOT TOUCH THIS UNLESS YOU WANT TO SPEND HOURS DEBUGGING DUMB STUFF*/
 void free_list(list * my_list, void (*free_func)(void*)){
@@ -222,13 +248,29 @@ void free_list(list * my_list, void (*free_func)(void*)){
    if (my_list->arr == NULL) return;
    free(my_list->arr);
    my_list->arr = NULL;
-   if (my_list->thread_safe) pthread_rwlock_destroy(&my_list->lock);
+   pthread_mutex_destroy(&my_list->read_lock);
+   pthread_mutex_destroy(&my_list->write_lock);
    free(my_list);
 }
 void remove_at(list *my_list, int index) {
+    
     if (my_list == NULL || index < 0 || index >= my_list->len) {
         return; 
     }
+    memset((char *)my_list->arr + index * my_list->dtS, 0,my_list->dtS);
+    if(my_list->thread_safe)pthread_mutex_lock(&my_list->write_lock); 
+    for (int i = index; i < my_list->len - 1; i++) {
+        memmove((char *)my_list->arr + i * my_list->dtS, (char *)my_list->arr + (i + 1) * my_list->dtS, my_list->dtS);
+    }
+    my_list->len--;
+    if(my_list->thread_safe)pthread_mutex_unlock(&my_list->write_lock); 
+}
+void remove_at_unlocked(list *my_list, int index) {
+    
+    if (my_list == NULL || index < 0 || index >= my_list->len) {
+        return; 
+    }
+    memset((char *)my_list->arr + index * my_list->dtS, 0,my_list->dtS);
     for (int i = index; i < my_list->len - 1; i++) {
         memmove((char *)my_list->arr + i * my_list->dtS, (char *)my_list->arr + (i + 1) * my_list->dtS, my_list->dtS);
     }
@@ -245,11 +287,25 @@ void * at(list *my_list, int index){
     if (my_list == NULL || index < 0 || index >= my_list->len) {
         return NULL;
     }
-
+    if (my_list->thread_safe) pthread_mutex_lock(&my_list->write_lock );
     //if (my_list->thread_safe) r_lock(&my_list->lock);
     void * ret = (char*)my_list->arr + (index * my_list->dtS);
     //if (my_list->thread_safe) unlock(&my_list->lock);
+    if (my_list->thread_safe) pthread_mutex_unlock(&my_list->write_lock );
     return ret;
+}
+void at_copy(list *my_list, void * storage, int index){
+    if (my_list == NULL || index < 0 || index >= my_list->len) {
+        return;
+    }
+    if (my_list->thread_safe) pthread_mutex_lock(&my_list->write_lock );
+    //if (my_list->thread_safe) r_lock(&my_list->lock);
+    void * ret = (char*)my_list->arr + (index * my_list->dtS);
+    
+    memcpy(storage, ret, my_list->dtS);
+    //if (my_list->thread_safe) unlock(&my_list->lock);
+    if (my_list->thread_safe) pthread_mutex_unlock(&my_list->write_lock );
+    return;
 }
 void swap(void * a, void * b, size_t len)
 {
@@ -305,8 +361,8 @@ bool check_in_list(list * my_list, void * element, bool(*func)(void*, void*)){
 bool compare_size_t (void * one, void * two){
     return *(size_t*)one == *(size_t*)two;
 }
-void shift_list(list * my_list){
-    for (int i = 0; i < my_list->len - 1; i++) {
+void shift_list(list * my_list, int start_index){
+    for (int i = start_index; i < my_list->len - 1; i++) {
         memmove((char *)my_list->arr + i * my_list->dtS, (char *)my_list->arr + (i + 1) * my_list->dtS, my_list->dtS);
     }
 }
@@ -321,7 +377,45 @@ int dump_list_ele(list * my_list, int(*item_write_func)( byte_buffer*, void*), b
     
     return loop_len;
 }
+int merge_lists(list * merge_into, list * merge_from, compare func){
 
+    int i=0;
+    int j=0;
+    list * temp = List(0, merge_into->dtS, merge_from->isAlloc);
+    pthread_mutex_lock(&merge_into->write_lock);
+    int old_len =  merge_into->len;;
+    int total = merge_into->len + merge_from->len;
+    while(i < merge_into->len && j < merge_from->len){
+        void * merge_fr_ele = at(merge_from, j);
+        void * merge_int_ele =  internal_at_unlocked(merge_into, i);
+        if (func(merge_fr_ele, merge_int_ele)  < 0 ){
+            insert(temp,merge_fr_ele);
+            j++;
+        }
+        else{
+            insert(temp,merge_int_ele);
+            i++;
+        }   
+    }
+    if (i >= merge_into->len){
+        for (; j < merge_from->len; j++){
+            insert(temp, at(merge_from, j));
+        }   
+    }
+    else{
+        for (; i < merge_into->len; i++){
+            insert(temp, internal_at_unlocked(merge_into, i));
+        }
+    }
+    for(int k = 0; k < temp->len; k++){
+        inset_at_unlocked(merge_into, at(temp, k), k);
+    }
+    fprintf(stdout, "merging %d with %d for %d total, actually got: %d\n", merge_from->len, old_len, total, merge_into->len);
+    pthread_mutex_unlock(&merge_into->write_lock);
+    free_list(temp, NULL);
+    return 0;
+
+}
 
 
 #endif

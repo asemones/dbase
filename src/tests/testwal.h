@@ -50,7 +50,7 @@ void test_seralize_wal(void) {
 
    
     seralize_wal(test_wal, test_buffer);
-    int * file_name_len = buf_ind(test_buffer, 8);
+    char* file_name_len = buf_ind(test_buffer, 8);
     TEST_ASSERT_EQUAL_INT(1, *file_name_len);
     char * file_name = buf_ind(test_buffer, 28);
     TEST_ASSERT_EQUAL_STRING(test_filename, file_name);
@@ -60,27 +60,34 @@ void test_seralize_wal(void) {
 
 void test_deseralize_wal(void) {
     init_test();
+
     size_t len = 20;
-    size_t fn_list_len = 2;
+    int fn_list_len = 2;
     size_t curr_fd_bytes = 2048;
-    char * test_file_name = "test_wal1.bin";
-    char * test_f_n_2 = "test_wal2.bin";
-    size_t fn_buffer_bytes = 40;
-    
+ 
+    size_t fn_buffer_bytes = MAX_WAL_FN_LEN * fn_list_len;
+
+    char *test_file_name = "test_wal1.bin";
+    char *test_f_n_2     = "test_wal2.bin";
+
     write_buffer(test_buffer, (char*)&len, sizeof(len));
     write_buffer(test_buffer, (char*)&fn_list_len, sizeof(fn_list_len));
     write_buffer(test_buffer, (char*)&curr_fd_bytes, sizeof(curr_fd_bytes));
     write_buffer(test_buffer, (char*)&fn_buffer_bytes, sizeof(fn_buffer_bytes));
-    write_buffer(test_buffer,test_file_name, strlen(test_file_name)+1);
-    // this is because the test buffer does not do the byte hop. not needed normally
-    test_buffer->curr_bytes += MAX_WAL_FN_LEN - (strlen(test_file_name)+1);
-    write_buffer(test_buffer,test_f_n_2 ,strlen(test_f_n_2)+1);
+
+    write_buffer(test_buffer, test_file_name, strlen(test_file_name) + 1);
+    test_buffer->curr_bytes += MAX_WAL_FN_LEN - (strlen(test_file_name) + 1);
+
+
+    write_buffer(test_buffer, test_f_n_2, strlen(test_f_n_2) + 1);
+    test_buffer->curr_bytes += MAX_WAL_FN_LEN - (strlen(test_f_n_2) + 1);
 
     test_wal->len = 0;
     test_wal->curr_fd_bytes = 0;
     reset_buffer(test_wal->fn_buffer);
     free_list(test_wal->fn, NULL);
     test_wal->fn = List(0, sizeof(char*), false);
+
 
 
     deseralize_wal(test_wal, test_buffer);

@@ -9,6 +9,7 @@
 #include "../util/alloc_util.h"
 #include "../db/backend/key-value.h"
 #pragma once
+#define PREFIX_LENGTH 5
 
 
 void create_a_babybase(void) {
@@ -45,8 +46,6 @@ void create_a_babybase(void) {
         free(k[i].entry);
         free(v[i].entry);
     }
-
-    usleep(1000000);
     for (int i = 0; i < size; i++) {
         char *key = (char*)wrapper_alloc(30, NULL, NULL);
         char *value = (char*)wrapper_alloc(30, NULL, NULL);
@@ -75,12 +74,65 @@ void create_a_babybase(void) {
 
     free_engine(l, meta_file, bloom_file);
 }
+void create_a_bigbase(storage_engine * l) {
+    const int size = 60000;
+    db_unit k[size];
+    db_unit v[size];
+    for (int i = 0; i < size; i++) {
+        char *key = (char*)wrapper_alloc(30, NULL, NULL);
+        char *value = (char*)wrapper_alloc(30, NULL, NULL);
+        k[i].entry = key;
+        v[i].entry=  value;
+
+        if (i % 3 == 0) {
+            sprintf(key, "common%d", i / 3); 
+            sprintf(value, "first_value%d", i / 3);
+        } else {
+            sprintf(key, "hello%d", i);
+            sprintf(value, "world%d", i);
+        }
+        k[i].len = strlen(key)+1;
+        v[i].len = strlen(value)+1;
+
+        write_record(l, k[i],v[i]);
+    }
+
+    
+
+   
+    for (int i = 0; i < size; i++) {
+        free(k[i].entry);
+        free(v[i].entry);
+    }
+    for (int i = 0; i < size; i++) {
+        char *key = (char*)wrapper_alloc(30, NULL, NULL);
+        char *value = (char*)wrapper_alloc(30, NULL, NULL);
+        k[i].entry = key;
+        v[i].entry=  value;
+        if (i % 3 == 0) {
+            sprintf(key, "common%d", i / 3); 
+            sprintf(value, "second_value%d", i / 3);  
+        } else {
+            sprintf(key, "key%d", i);
+            sprintf(value, "value%d", i);
+        }
+
+        k[i].len = strlen(key)+1;
+        v[i].len = strlen(value)+1;
+        write_record(l, k[i],v[i]); 
+    }
+
+    // Free allocated memory for the second table
+    for (int i = 0; i < size; i++) {
+         free(k[i].entry);
+         free(v[i].entry);
+    }
+}
 storage_engine * create_messy_db(){
     create_a_babybase();
     storage_engine * l = create_engine("meta.bin", "bloom.bin");
     compact_manager* cm = init_cm(l->meta, l->cach);
-    compact_one_table(cm, 0,0,1,0);
-    compact_one_table(cm, 1,1,6,1);
+    sst_f_inf * victim = at(cm->sst_files[0], 0);
     for (int i = 6000; i < 9000; i++) {
         char *key = (char*)wrapper_alloc(60, NULL, NULL);
         char *value = (char*)wrapper_alloc(60, NULL, NULL);
@@ -103,7 +155,6 @@ storage_engine * create_messy_db(){
         k.len = strlen(k.entry) + 1;
         v.len= strlen(v.entry)+1;
         write_record(l, k,v);
-        
     }
     return l;
 }
@@ -130,4 +181,91 @@ void clean_test_files(void){
     remove ("WAL_0.bin");
     remove("WAL_1.bin");
     remove("WAL_M.bin");
+}
+
+
+void generate_random_prefix(char* buffer, size_t prefix_len) {
+    const char *allowed = "abcdefghijklmnopqrstuvwxyz0123456789";
+    for (size_t i = 0; i < prefix_len; i++) {
+        buffer[i] = allowed[rand() % 36];
+    }
+    buffer[prefix_len] = '\0';
+}
+
+void add_random_records_a_z(storage_engine *l, const int size) {
+   
+    srand((unsigned int)time(NULL));
+
+    db_unit * k = malloc(sizeof(db_unit)* size);
+    db_unit  * v = malloc(sizeof(db_unit)* size);
+
+
+    for (int i = 0; i < size; i++) {
+        char *key = (char*)wrapper_alloc(30, NULL, NULL);
+        char *value = (char*)wrapper_alloc(30, NULL, NULL);
+        k[i].entry = key;
+        v[i].entry = value;
+
+        
+        char prefix[PREFIX_LENGTH + 1];
+        generate_random_prefix(prefix, PREFIX_LENGTH);
+
+    
+        sprintf(key, "%s_key_%d", prefix, i);
+        sprintf(value, "first_value%d", i);
+
+        k[i].len = strlen(key) + 1;
+        v[i].len = strlen(value) + 1;
+
+        write_record(l, k[i], v[i]);
+    }
+
+    lock_table(l);
+    flush_table(l);
+
+    for (int i = 0; i < size; i++) {
+        free(k[i].entry);
+        free(v[i].entry);
+    }
+
+    for (int i = 0; i < size; i++) {
+        char *key = (char*)wrapper_alloc(30, NULL, NULL);
+        char *value = (char*)wrapper_alloc(30, NULL, NULL);
+        k[i].entry = key;
+        v[i].entry = value;
+
+    
+        char prefix[PREFIX_LENGTH + 1];
+        generate_random_prefix(prefix, PREFIX_LENGTH);
+
+        sprintf(key, "%s_key_%d", prefix, i);
+        sprintf(value, "second_value%d", i);
+
+        k[i].len = strlen(key) + 1;
+        v[i].len = strlen(value) + 1;
+
+        write_record(l, k[i], v[i]);
+    }
+
+    lock_table(l);
+    flush_table(l);  
+    
+    for (int i = 0; i < size; i++) {
+         free(k[i].entry);
+         free(v[i].entry);
+    }
+    free(k);
+    free(v);
+}
+void remove_ssts(list ** sst2){
+    for(int j = 0; j < LEVELS; j++){
+        list * ssts= sst2[j];
+        for(int i = 0; i <ssts->len; i++){
+            sst_f_inf * sst= at(ssts, i);
+            int res = remove(sst->file_name);
+            if (res!=0){
+                fprintf(stdout, "%s failed at %d level\n",sst->file_name, j);
+            }
+        }
+    }
 }

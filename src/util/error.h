@@ -23,6 +23,7 @@ typedef enum error_codes{
     FAILED_ARENA,
     STRUCT_NOT_MADE,
     FAILED_TRANSCATION,
+    PROTECTED_RESOURCE,
     UNKNOWN_ERROR
     
 
@@ -33,6 +34,7 @@ typedef enum error_codes{
 
 /*error codes ordered by recency in the call stack*/
 /*Each "worker" gets an error call stsck*/
+/*To finish error codes, concurrency needs to be done. Revist */
 const char * get_error_string(error_codes error);
 
 

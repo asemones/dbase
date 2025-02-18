@@ -11,18 +11,21 @@
 #include "../sst_builder.h"
 #include"../indexer.h"
 #include "../../../util/error.h"
+#include "../snapshot.h"
 #ifndef METADATA_H
 #define METADATA_H
 #define BUFFER_SIZE 563840
 #define DICT_BUFFER_SIZE 563840
 #define NUM_HASH 7
 #define NUM_WORD 2000
-#define MIN_KEY_SIZE 10
-#define TIME_STAMP_SIZE 20
+#define MIN_KEY_SIZE 40 /*DANGEROUS*/
+#define TIME_STAMP_SIZE 32
 #define MAX_LEVELS 7
 #define BASE_LEVEL_SIZE 6400000
 #define MIN_COMPACT_RATIO 50
 #define INDEX_MEMORY_COUNT 1024*500
+#define SNAP_HIST_LEN 50
+
 
 /*This is the meta_data struct. The meta_data struct is the equvialent of the cataologue in most dbms. 
 It containes all the information about the database including all indexes and the bloom filters for each level,
@@ -35,6 +38,7 @@ typedef struct meta_data{
     size_t min_c_ratio; //minimum compact ratio
     list * sst_files[MAX_LEVELS];
     int levels_with_data[MAX_LEVELS];
+    snapshot * current_tx_copy;
     int shutdown_status;
     int err_code;
 }meta_data;
@@ -48,7 +52,7 @@ static int read_sst_list(list * sst_files, byte_buffer * tempBuffer, size_t num_
         read_buffer(tempBuffer, &sst->length, sizeof(size_t));
         read_buffer(tempBuffer, sst->max, MIN_KEY_SIZE);
         read_buffer(tempBuffer, sst->min, MIN_KEY_SIZE);
-        read_buffer(tempBuffer, sst->timestamp, TIME_STAMP_SIZE);
+        read_buffer(tempBuffer, &sst->time,sizeof(sst->time) );
         read_buffer(tempBuffer, &sst->block_start, sizeof(size_t));
         read_buffer(tempBuffer, &block_ind_len, sizeof(size_t));
         sst->block_indexs = thread_safe_list(block_ind_len,sizeof(block_index),false);
@@ -72,6 +76,22 @@ static int read_sst_list(list * sst_files, byte_buffer * tempBuffer, size_t num_
     free_buffer(small_buff);
     return 0;
 }
+int save_snap(meta_data * meta){
+    meta->current_tx_copy = create_snap();
+    snapshot * save_loc = meta->current_tx_copy;
+    for (int i =0; i < LEVELS; i++){
+        if (meta->sst_files[i]== NULL) continue;
+        save_loc->sst_files[i] = thread_safe_list(0, sizeof(sst_f_inf),false);
+        for (int j = 0; j < meta->sst_files[i]->len; j++){
+            sst_f_inf f;
+            sst_f_inf * sst_to_copy=  at(meta->sst_files[i],j);
+            int ret =sst_deep_copy(sst_to_copy, &f);
+            if (ret !=OK) return ret;
+            insert(save_loc->sst_files[i], &f);
+        }
+    }
+    return OK;
+}
 
 static void fresh_meta_load(meta_data * meta){
     meta->num_sst_file = 0;
@@ -83,7 +103,7 @@ static void fresh_meta_load(meta_data * meta){
     meta->min_c_ratio = MIN_COMPACT_RATIO;
     /*make lists for all*/
     for (int i = 0; i < MAX_LEVELS; i++){
-        meta->sst_files[i] = thread_safe_list(0,sizeof(sst_f_inf),false); 
+        meta->sst_files[i] = thread_safe_list(512,sizeof(sst_f_inf),false); 
     }
     for (size_t i = 0; i < MAX_LEVELS; i++)
     {
@@ -103,6 +123,7 @@ meta_data * load_meta_data(char * file, char * bloom_file){
     if ((bytes = read_file(tempBuffer->buffy,file, "rb",1,0)) <= 0) {
         fresh_meta_load(meta);
         free_buffer(tempBuffer);
+        save_snap(meta);
         return meta;
     }
     int size=  sizeof(size_t);
@@ -117,13 +138,13 @@ meta_data * load_meta_data(char * file, char * bloom_file){
     read_buffer(tempBuffer, lengths, sizeof(int)*MAX_LEVELS);
     for (int i = 0; i < MAX_LEVELS; i++){
          if (lengths[i] <=0){
-            meta->sst_files[i] = thread_safe_list(0,sizeof(sst_f_inf),false);
+            meta->sst_files[i] = thread_safe_list(512,sizeof(sst_f_inf),false);
             if (meta->sst_files[i] == NULL){
                 return NULL;
             }
             continue;
         }
-        meta->sst_files[i] = thread_safe_list(lengths[i],sizeof(sst_f_inf),false);
+        meta->sst_files[i] = thread_safe_list(512,sizeof(sst_f_inf),false);
         meta->sst_files[i]->len = lengths[i];
         int ret = read_sst_list(meta->sst_files[i], tempBuffer, meta->num_sst_file);
         if (ret !=OK) {
@@ -134,6 +155,7 @@ meta_data * load_meta_data(char * file, char * bloom_file){
     read_buffer(tempBuffer, &readSize, size);
     free_buffer(tempBuffer);
     tempBuffer = NULL;
+    //save_snap(meta);
 
     return meta;
 }
@@ -144,11 +166,13 @@ static void dump_sst_list(list * sst_files, FILE * f){
         fwrite(&sst->length, 1,sizeof(size_t),f);
         fwrite(sst->max, 1, MIN_KEY_SIZE, f);
         fwrite(sst->min, 1, MIN_KEY_SIZE, f);
-        fwrite(sst->timestamp, 1, TIME_STAMP_SIZE, f);
+        fwrite(&sst->time, 1, sizeof(sst->time), f);
         if (sst->block_indexs == NULL) continue;
         fwrite(&sst->block_start, 1, sizeof(size_t), f);
         size_t temp = sst->block_indexs->len;
         fwrite(&temp, 1, sizeof(size_t), f);
+        free_sst_inf(sst);
+        sst = NULL;
     }
 }
 static void write_md_d(char * file, meta_data * meta, byte_buffer * temp_buffer){
@@ -192,6 +216,7 @@ static void free_md(meta_data * meta){
         free_list(meta->sst_files[i], &free_sst_inf);
         
     }
+    //if (meta->current_tx_copy != NULL) free(meta->current_tx_copy);
     free(meta);
     meta = NULL;
 }
@@ -204,6 +229,4 @@ void destroy_meta_data(char * file,char * bloom_file, meta_data * meta){
     free_md(meta);
     free_buffer(temp_buffer);
 }
-
-
 #endif

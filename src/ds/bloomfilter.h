@@ -67,7 +67,7 @@ bit_array* create_bit_array(size_t size){
     bit_array *bit  = (bit_array*) wrapper_alloc((sizeof(bit_array)), NULL,NULL);
     if (bit == NULL) return NULL;
     bit->size = size;
-    bit->array = (uint64_t*)calloc(size, 64);
+    bit->array = (uint64_t*)calloc(size, sizeof(uint64_t));
     if (bit->array == NULL) return NULL;
     return bit;
 }
@@ -190,6 +190,21 @@ bloom_filter * from_stream(byte_buffer * buffy_the_buffer){
     b->ba->size = tsize;
     read_buffer(buffy_the_buffer, b->ba->array, tsize*sizeof(size_t));
     return b;
+}
+bloom_filter* deep_copy_bloom_filter(const bloom_filter* original) {
+    bloom_filter* copy = malloc(sizeof(bloom_filter));
+    if (copy == NULL) {
+        return NULL;
+    }
+    copy->num_hash = original->num_hash;
+    copy->ba = create_bit_array(copy->ba->size);
+    if (copy->ba == NULL) {
+        free(copy);
+        return NULL;
+    }
+    memcpy(copy->ba->array, original->ba->array, original->ba->size * sizeof(uint64_t));
+
+    return copy;
 }
 #endif
 

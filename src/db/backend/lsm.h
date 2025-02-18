@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include "btree.h"
 #include "../../ds/bloomfilter.h"
@@ -42,6 +43,11 @@ option GLOB_OPTS;
 the user should never be concerned with this struct. The storage engine contains memtables, one active and one immutable. It also has
 pools for reading and writing data and access the metadata struct. The mem_table uses a skiplist.
 The general read and write functions are present here*/
+
+/*simplifed MVCC: Since we are using a lsm tree, we can implement mvcc in a clever way by a combintation of using sst timestamps and a strat
+to ensure that duplicate instances never exist inside one sst table. To do this, we can ensure that A: only one copy of a record in a memtable is flushed. When the memtable is locked, only the most recent verison of duplicates will be written to disk. Any other copies
+will remain in memory. During compaction, we can preform a copy-on-write approach in regard to sst table intergration. Once no more reader threads
+are acting on the old copies of the files, we can swap out the sst files.*/
 typedef struct mem_table{
     size_t bytes;
     bloom_filter *filter;
@@ -58,6 +64,9 @@ typedef struct storage_engine{
     struct_pool * write_pool;
     cache * cach;
     WAL * w;
+    pthread_cond_t * compactor_wait;
+    pthread_mutex_t * compactor_wait_mtx;
+    bool * cm_ref;
     int error_code;
 }storage_engine;
 static int flush_table(storage_engine * engine);
@@ -136,7 +145,7 @@ storage_engine * create_engine(char * file, char * bloom_file){
     engine->cach= create_cache(GLOB_OPTS.LRU_CACHE_SIZE, GLOB_OPTS.BLOCK_INDEX_SIZE);
     if (engine->cach == NULL) return NULL;
     for(int i = 0; i < WRITER_BUFFS; i++){
-        byte_buffer * buffer = create_buffer(MEMTABLE_SIZE*1.5);
+        byte_buffer * buffer = create_buffer( GLOB_OPTS.MEM_TABLE_SIZE*1.5);
         if (buffer == NULL) return NULL;
         insert_struct(engine->write_pool,buffer);
     }
@@ -148,6 +157,11 @@ storage_engine * create_engine(char * file, char * bloom_file){
         the stray skipbufs inside this function skipbuf*/
     }
     engine->error_code = OK;
+    engine->compactor_wait = malloc(sizeof(pthread_cond_t));
+    engine->compactor_wait_mtx = malloc(sizeof(pthread_mutex_t));
+    engine->cm_ref = NULL;
+    pthread_mutex_init(engine->compactor_wait_mtx, NULL);
+    pthread_cond_init(engine->compactor_wait, NULL);
     return engine;
 }
 int write_record(storage_engine* engine ,db_unit key, db_unit value){
@@ -157,7 +171,7 @@ int write_record(storage_engine* engine ,db_unit key, db_unit value){
         fprintf(stdout, "WARNING: transcantion failure \n");
         return FAILED_TRANSCATION;
     }
-    if (engine->table[CURRENT_TABLE]->bytes + 4 + key.len + value.len >=  MEMTABLE_SIZE){
+    if (engine->table[CURRENT_TABLE]->bytes + 4 + key.len + value.len >=  GLOB_OPTS.MEM_TABLE_SIZE){
         lock_table(engine);
         int status = flush_table(engine);
         if (status != 0) return -1;
@@ -191,6 +205,7 @@ size_t find_sst_file(list  *sst_files, size_t num_files, const char *key) {
     }
     return 0;
 }
+
 size_t find_block(sst_f_inf *sst, const char *key) {
     int left = 0;
     int right = sst->block_indexs->len - 1;
@@ -245,11 +260,43 @@ char * disk_read(storage_engine * engine, const char * keyword){
     }
     return NULL;
 }
+char * disk_read_snap(snapshot * snap, const char * keyword){ 
+    
+    for (int i= 0; i < MAX_LEVELS; i++){
+        if (snap->sst_files[i] == NULL |snap->sst_files[i]->len ==0) continue;
+
+        list * sst_files_for_x = snap->sst_files[i];
+        size_t index_sst = find_sst_file(sst_files_for_x, sst_files_for_x->len, keyword);
+        if (index_sst == -1) continue;
+        
+        sst_f_inf * sst = at(sst_files_for_x, index_sst);
+       
+        bloom_filter * filter=  sst->filter;
+        if (!check_bit(keyword,filter)) continue;
+       
+        size_t index_block= find_block(sst, keyword);
+        block_index * index = at(sst->block_indexs, index_block);
+        
+        cache_entry * c = retrieve_entry(snap->cache_ref, index, sst->file_name);
+        if (c == NULL ){
+            return NULL;
+        }
+        int k_v_array_index = json_b_search(c->ar, keyword);
+        if (k_v_array_index== -1) continue;
+
+        return  c->ar->values[k_v_array_index].entry;    
+    }
+    return NULL;
+}
 char* read_record(storage_engine * engine, const char * keyword){
     Node * entry= search_list(engine->table[CURRENT_TABLE]->skip, keyword);
     if (entry== NULL) return disk_read(engine, keyword);
-    return entry->value.entry;
-    
+    return entry->value.entry; 
+}
+char* read_record_snap(storage_engine * engine, const char * keyword, snapshot * s){
+    Node * entry= search_list(engine->table[CURRENT_TABLE]->skip, keyword);
+    if (entry== NULL) return disk_read_snap(s,keyword);
+    return entry->value.entry; 
 }
 /*REWRITE THIS FUNCTION AFTER EVERYTHING ELSE*/
 /*
@@ -278,8 +325,8 @@ static void seralize_table(SkipList * list, byte_buffer * buffer, sst_f_inf * s)
     db_unit last_entry;
     memcpy(&s->min, node->key.entry, node->key.len);
 
-    
-    block_index  b = create_ind_stack(10 *(GLOB_OPTS.BLOCK_INDEX_SIZE/(4*1024)));
+    int est_num_keys = 10 *(GLOB_OPTS.BLOCK_INDEX_SIZE/(4*1024));
+    block_index  b = create_ind_stack(est_num_keys);
     while (node != NULL){
         last_entry = node->key;
         if (sum  + 4 + node->key.len + node->value.len > GLOB_OPTS.BLOCK_INDEX_SIZE){
@@ -292,6 +339,7 @@ static void seralize_table(SkipList * list, byte_buffer * buffer, sst_f_inf * s)
             buffer->curr_bytes +=2; //for the next num_entry_loc;
             num_entries = 0;
             sum = 2;
+            b=  create_ind_stack(est_num_keys);
           
         }
         sum += write_db_unit(buffer, node->key);
@@ -304,7 +352,7 @@ static void seralize_table(SkipList * list, byte_buffer * buffer, sst_f_inf * s)
     b.len = sum;
     build_index(s, &b,buffer, num_entries, num_entry_loc);
     memcpy(&s->max, last_entry.entry, last_entry.len);
-    grab_time_char(s->timestamp);
+    gettimeofday(&s->time, NULL);
 }
 
 void lock_table(storage_engine * engine){
@@ -317,22 +365,12 @@ static int flush_table(storage_engine * engine){
     mem_table * table = engine->table[PREV_TABLE];
     byte_buffer * buffer = request_struct(engine->write_pool);
     meta_data * meta = engine->meta;
-    meta->sst_files[0]->len++;
-    sst_f_inf* sst = at(meta->sst_files[0], meta->num_sst_file); 
-    if (sst == NULL){
-        meta->sst_files[0]->len --;
-        sst = create_sst_file_info(NULL, 0, NUM_WORD, table->filter);
-        if (sst == NULL) return NULL;
-        insert(meta->sst_files[0],sst);
-        sst = at(meta->sst_files[0], meta->sst_files[0]->len-1);
-    }
-    else{
-        sst->mem_store = calloc_arena(4096);
-        if (sst->mem_store == NULL) return-1;
-        sst->block_indexs = List(0, sizeof(block_index), true);
-        if (sst->block_indexs == NULL) return -1;
-        sst->filter = table->filter;
-    }
+  
+
+    sst_f_inf sst_s = create_sst_filter(table->filter);
+
+    sst_f_inf * sst = &sst_s;
+
     if (table->bytes <= 0) {
         return_struct(engine->write_pool, buffer,&reset_buffer);
         return -1;
@@ -344,13 +382,18 @@ static int flush_table(storage_engine * engine){
     meta->db_length+= buffer->curr_bytes;
     all_index_stream(sst->block_indexs->len, buffer, sst->block_indexs);
     copy_filter(sst->filter, buffer);
-    gen_sst_fname(meta->num_sst_file, LVL_0, sst->file_name);
+    generate_unique_sst_filename(sst->file_name, MAX_F_N_SIZE, LVL_0);
     FILE * sst_f = fopen(sst->file_name, "wb");
     fwrite(&buffer->buffy[0], sizeof(unsigned char),buffer->curr_bytes,sst_f);
     fflush(sst_f);
+    fsync(sst_f->_fileno);
     meta->num_sst_file ++;
+    insert(meta->sst_files[0], sst);
     table->immutable= false;
     return_struct(engine->write_pool, buffer,&reset_buffer);
+  
+    if (engine->cm_ref!= NULL) *engine->cm_ref = true;
+    pthread_cond_signal(engine->compactor_wait);
     return 0;
 
 }
@@ -390,6 +433,10 @@ void free_engine(storage_engine * engine, char* meta_file,  char * bloom_file){
     return_struct(engine->write_pool, b, &reset_buffer);
     free_pool(engine->write_pool, &free_buffer);
     free_cache(engine->cach);
+    pthread_mutex_destroy(engine->compactor_wait_mtx);
+    pthread_cond_destroy(engine->compactor_wait);
+    free(engine->compactor_wait);
+    free(engine->compactor_wait_mtx);
     free(engine);
     engine = NULL;
 }

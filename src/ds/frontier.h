@@ -41,7 +41,7 @@ void enqueue(frontier *front, void* element);
  * @param front Pointer to the frontier.
  * @param out_buffer Buffer where the removed element will be copied.
  */
-void dequeue(frontier * front, void* out_buffer);
+int dequeue(frontier * front, void* out_buffer);
 
 /**
  * @brief Returns the element with the highest priority without removing it from the frontier.
@@ -109,23 +109,22 @@ void heapify(frontier *front, int index) {
     }
 }
 
-void dequeue(frontier* front, void* out_buffer) {
+int dequeue(frontier* front, void* out_buffer) {
     if (front->queue->len == 0) {
-        return; // or handle the empty queue case appropriately
+        return -1; // or handle the empty queue case appropriately
     }
 
     void* root = at(front->queue, 0);
-    kv * l = root;
-    int* m = l->key;
+
     memcpy(out_buffer, root, front->queue->dtS);
 
     void* last_element = at(front->queue, front->queue->len - 1);
-    kv * p= last_element;
-    int * q= p->key;
+   
     swap(root, last_element, front->queue->dtS);
 
     front->queue->len--;
     heapify(front, 0);
+    return 0;
 }
 
 void* peek(frontier * front) {

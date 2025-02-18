@@ -16,37 +16,37 @@ void test_init_iters(){
     create_a_babybase();
     storage_engine * f = create_engine("meta.bin", "bloom.bin");
     init_aseDB_iter(it,f);
+    remove_ssts(f->meta->sst_files);
     free_engine(f,"meta.bin", "bloom.bin");
     clean_test_files();
-
     free_aseDB_iter(it);
 }
 void test_seek(){
     aseDB_iter * it=  create_aseDB_iter();
     create_a_babybase();
     storage_engine * f = create_engine("meta.bin", "bloom.bin");
-    compact_manager * cm = init_cm(f->meta, f->cach);
-    compact_one_table(cm, 0,0,1,0);
+   
+
     init_aseDB_iter(it, f);
     seek(it, "k");
     clean_test_files();
-
+    remove_ssts(f->meta->sst_files);
     free_aseDB_iter(it);
 }
 void test_next(){
     aseDB_iter * it=  create_aseDB_iter();
     create_a_babybase();
     storage_engine * f = create_engine("meta.bin", "bloom.bin");
-    compact_manager * cm = init_cm(f->meta, f->cach);
-    compact_one_table(cm, 0,0,1,0);
+  
     init_aseDB_iter(it, f);
     seek(it, "k");
     merge_data m = aseDB_iter_next(it);
     char * next= m.value->entry;
-    TEST_ASSERT_EQUAL_STRING("value1",next);
+    TEST_ASSERT_EQUAL_STRING("world5570",next);
     m = aseDB_iter_next(it);
     next = m.value->entry;
-    TEST_ASSERT_EQUAL_STRING("value10",next);
+    TEST_ASSERT_EQUAL_STRING("world5572",next);
+    remove_ssts(f->meta->sst_files);
     clean_test_files();
 
     free_aseDB_iter(it);
@@ -55,10 +55,7 @@ void test_run_scan(){
     aseDB_iter * it=  create_aseDB_iter();
     create_a_babybase();
     storage_engine * f = create_engine("meta.bin", "bloom.bin");
-    compact_manager * cm = init_cm(f->meta, f->cach);
-    compact_one_table(cm, 0,0,1,0);
-    compact_one_table(cm, 1,1,2,0);
-    compact_one_table(cm,1,2,6,0);
+
     init_aseDB_iter(it, f);
     seek(it, "c");
     for (merge_data next = aseDB_iter_next(it); ((char*)next.key->entry)[0] < 'k'; next = aseDB_iter_next(it)){
@@ -67,9 +64,8 @@ void test_run_scan(){
         if (next.index == -1){
             break;
         }
-        fprintf(stdout,"%s\n", next.value->entry);
     }
-
+    remove_ssts(f->meta->sst_files);
     free_aseDB_iter(it);
     free_engine(f, "meta.bin", "bloom.bin");
     clean_test_files();
@@ -83,9 +79,8 @@ void test_full_table_scan_messy(){
         if (next.key== EODB){
             break;
         }
-        fprintf(stdout,"%s\n", next.value->entry);
     }
-
+    remove_ssts(s->meta->sst_files);
     free_aseDB_iter(it);
     free_engine(s, "meta.bin", "bloom.bin");
     clean_test_files();

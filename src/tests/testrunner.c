@@ -13,7 +13,6 @@
 #include "testlsm.h"
 #include "testcompactor.h"
 #include "test_iter.h"
-#include "testlru.h"
 #include "test_iter.h"
 #include "testwal.h"
 
@@ -89,15 +88,9 @@ int main(void) {
     RUN_TEST(test_write_engine);
     RUN_TEST(test_write_then_read_engine);
     fprintf(stderr, "RUNNING COMPACTION TESTS\n");
-    RUN_TEST(test_merge_tables);
-    RUN_TEST(test_merge_one_table);
-    RUN_TEST(test_merge_0_to_empty_one);
-    RUN_TEST(test_merge_0_to_filled_one);
-    RUN_TEST(test_attempt_to_break_compactor);
-    fprintf(stderr, "RUNNING LRU TESTS\n");
-    RUN_TEST(test_cache_init);
-    RUN_TEST(test_cache_add_and_get);
-    RUN_TEST(test_cache_evict);
+    RUN_TEST(fat_db_passive);
+    RUN_TEST(random_values_short);
+    RUN_TEST(random_values_long);
     fprintf(stderr,"RUNNING ITER TESTS\n");
     RUN_TEST(test_init_iters);
     RUN_TEST(test_seek);

@@ -46,10 +46,10 @@ void build_index(sst_f_inf * sst, block_index * index, byte_buffer * b, size_t n
         memcpy(&key_len, &b->buffy[block_offsets + 2], sizeof(u_int16_t));
         memcpy(index->min_key, &b->buffy[block_offsets +4], key_len);
         if (is_avx_supported()){
-            index->checksum =  crc32_avx2(buf_ind(b, block_offsets), index->len);
+            index->checksum =  crc32_avx2((uint8_t*)buf_ind(b, block_offsets), index->len);
         }
         else{
-            index->checksum = crc32(buf_ind(b, block_offsets), index->len);
+            index->checksum = crc32((uint8_t*)buf_ind(b, block_offsets), index->len);
         }
     } 
     index->num_keys = num_entries;
@@ -63,6 +63,7 @@ void free_sst_inf(void * ss){
     sst->mem_store = NULL;
     free_bit(sst->filter->ba);
     sst->filter = NULL;
+    sst = NULL;
 
     //free(sst);
 }

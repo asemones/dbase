@@ -21,6 +21,7 @@ void test_use_and_load(void){
         sst->length = 0;
         sst->block_start = 0;
         sst->block_indexs = NULL;
+        sst->filter = NULL;
         
         insert(meta->sst_files[0], sst);
 
@@ -44,8 +45,7 @@ void test_use_and_load(void){
         sst_f_inf * sst = (sst_f_inf*)at(meta->sst_files[0], i);
         TEST_ASSERT_NOT_NULL(sst);
     }
-    destroy_meta_data ("meta.bin", "bloom.bin", meta);
-
+   
     remove("meta.bin");
     remove("bloom.bin");
 }

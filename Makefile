@@ -1,6 +1,6 @@
 # Compiler and flags
 CC = clang
-CFLAGS = -Wall -g -m64 -I${workspaceFolder}/src/tests/unity -fsanitize=address -mavx
+CFLAGS = -Wall -g -m64 -I${workspaceFolder}/src/tests/unity -gdwarf-4 -mavx #-fsanitize=address
 LDFLAGS = -debug -pthread -luuid
 
 

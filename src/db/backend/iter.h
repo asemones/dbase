@@ -67,12 +67,9 @@ aseDB_iter * create_aseDB_iter(){
     dbi->l_0_sst_iters = List(0,sizeof(sst_iter), false);
     dbi->pq = Frontier(sizeof(merge_data),false, &compare_merge_data);
     dbi->ret = List(0,sizeof(merge_data), false);
-    if (dbi->l_0_sst_iters == NULL || dbi->l_1_n_level_iters == NULL || dbi->ret == NULL){
+    if (dbi->l_0_sst_iters == NULL ||  dbi->ret == NULL){
         if (dbi->l_0_sst_iters !=NULL){
             free_list(dbi->l_0_sst_iters, NULL);
-        }
-        if (dbi->l_1_n_level_iters != NULL){
-            free_list(dbi->l_1_n_level_iters, NULL);
         }
         if (dbi->pq == NULL){
             free_front(dbi->pq);
@@ -317,7 +314,7 @@ merge_data aseDB_iter_next(aseDB_iter * iter){
                 return dummy;
 
         }
-        if (next_grab.key == NULL || (last_element != NULL) && (strcmp(next_grab.key->entry, last_element->key->entry) == 0 && strcmp(next_grab.value->entry, last_element->value->entry)==0 )){
+        if (next_grab.key == NULL || ((last_element != NULL) && (strcmp(next_grab.key->entry, last_element->key->entry) == 0 ) && strcmp(next_grab.value->entry, last_element->value->entry)==0 )){
             return next;
         }
         enqueue(iter->pq, &next_grab);

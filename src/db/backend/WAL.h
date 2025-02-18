@@ -79,7 +79,7 @@ WAL* init_WAL(byte_buffer * b){
         file_name = add_new_wal_file(w);
     }
     else{
-        b->curr_bytes +=  fread(b->buffy,1, get_file_size(w->wal_meta)+2, w->wal_meta);
+        b->curr_bytes +=  fread(b->buffy,1, get_file_size(w->wal_meta), w->wal_meta);
         deseralize_wal(w,b);
         char ** file_n_ptr = get_last(w->fn);
         if (file_n_ptr!= NULL) file_name = *file_n_ptr;

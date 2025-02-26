@@ -23,6 +23,7 @@ typedef enum error_codes{
     FAILED_ARENA,
     STRUCT_NOT_MADE,
     FAILED_TRANSCATION,
+    PROTECTED_RESOURCE,
     UNKNOWN_ERROR
     
 
@@ -33,10 +34,11 @@ typedef enum error_codes{
 
 /*error codes ordered by recency in the call stack*/
 /*Each "worker" gets an error call stsck*/
-const char * get_error_string(error_codes error);
+/*To finish error codes, concurrency needs to be done. Revist */
+static inline const char * get_error_string(error_codes error);
 
 
-void create_error_message(int* error_codes, int num_codes, char* buf) {
+static inline void create_error_message(int* error_codes, int num_codes, char* buf) {
     if (num_codes <= 0 || buf == NULL) {
         return;
     }
@@ -70,7 +72,7 @@ void create_error_message(int* error_codes, int num_codes, char* buf) {
     }
 }
 
-const char* get_error_string(error_codes error) {
+static inline const char* get_error_string(error_codes error) {
     switch(error) {
         case OK:
             return "Operation successful";

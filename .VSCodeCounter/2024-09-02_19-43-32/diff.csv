@@ -1,8 +1,0 @@
-"filename", "language", "C", "comment", "blank", "total"
-"/home/asemones/Documents/personal_code/dbase/src/db/backend/WAL.h", "C", 46, 2, 0, 48
-"/home/asemones/Documents/personal_code/dbase/src/db/backend/option.h", "C", 0, 0, 1, 1
-"/home/asemones/Documents/personal_code/dbase/src/ds/byte_buffer.h", "C", 30, 1, 0, 31
-"/home/asemones/Documents/personal_code/dbase/src/ds/list.h", "C", 0, 0, 1, 1
-"/home/asemones/Documents/personal_code/dbase/src/ds/skiplist.h", "C", 12, 0, 0, 12
-"/home/asemones/Documents/personal_code/dbase/src/util/maths.h", "C", 2, 0, -1, 1
-"Total", "-", 90, 3, 1, 94

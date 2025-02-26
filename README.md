@@ -1,12 +1,12 @@
 # dbase
-In progress production-grade dbms from scratch with a focus on write centered workloads. Currently implementing the key-value store that will power the rest of the system.
-This db is far from complete and should not be used.
+In progress dbms from scratch with a focus on write centered workloads. Currently implementing the key-value store that will power the rest of the system.
+This db is far from complete and should not be used. The architeture is a skip-list log-structured merge-tree with a compactor for garbage collection, along with a clock buffer pool. Compactor supports
+leveled compaction currently.
 There is no final end goal for this project but there are various "checkpoints" that ensure a "good enough" product always exists. 
-Currently, the MVP of a simple key-value engine supporting get/set, delete, and scan is nearly complete. The next checkpoints are as follows:
+The next checkpoints are as follows:
 
-An expanded key-value store closer to a small scale production ready storage engine. The qualifiers for this include implementing my own IO/scheduling services/rate limiter, optimizing the compaction algorithm, robust crash recovery, compression and seperation of keys and values, proper alignment of data blocks. Finally, the implemntation of an aysnc io engine to drastically improve write preformance.
+An expanded key-value store closer to a small scale production ready storage engine. The qualifiers for this include implementing my own IO/scheduling services/rate limiter, optimizing the compaction algorithm, robust crash recovery, and seperation of keys and values. Finally, the implemnetation of an aysnc io engine(io_uring) to drastically improve io preformance.
 
-The next checkpoint is a MVP database of either SQL or NOSQL. It involves a basic query language or subset of sql and preforms the most basic of operations. Miminal query optimization/planning, if any
+Next, I will decide between whether to build a sql or nosql database ontop, likely in a systems language better equipped for larger projects(c++ or rust). Handrolling vectors is.. not fun. This will include a distrbuted layer ontop (sharding and replication)
 
-The next checkpoint from here will be written out when the final storage engine checkpoint is finished. 
 

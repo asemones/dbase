@@ -24,11 +24,16 @@ event_loop* create_loop(size_t size);
 //int add(eventLoop* loop, int fd, short filter, aioCallback* callback, void* userdata);
 void run_loop(event_loop * loop);
 */
+static inline int write_wrapper(void * ptr, size_t size, size_t n, FILE * file ){
+    return fwrite(ptr, size, n, file);
+}
+static inline int read_wrapper(void  * ptr, size_t size, size_t n, FILE * file ){
+    return fread(ptr, size, n, file);
+}
+static inline int write_file(char * buf, char * file, char * mode, size_t bytes, size_t element);
+static inline int read_file( char * buf, char * file, char * mode, size_t bytes, size_t element);
 
-int write_file(char * buf, char * file, char * mode, size_t bytes, size_t element);
-int read_file( char * buf, char * file, char * mode, size_t bytes, size_t element);
-
-int read_file( char * buf, char * file, char * mode, size_t bytes, size_t element)
+static inline int read_file( char * buf, char * file, char * mode, size_t bytes, size_t element)
 {
     FILE *File= fopen(file, mode);
     if (File == NULL){
@@ -45,7 +50,7 @@ int read_file( char * buf, char * file, char * mode, size_t bytes, size_t elemen
     return read_size;
 }
 
-int write_file(char * buf, char * file, char * mode, size_t bytes, size_t element){
+static inline int write_file(char * buf, char * file, char * mode, size_t bytes, size_t element){
     FILE *File= fopen(file, mode);
     if (File == NULL){
         perror("fopen");
@@ -55,7 +60,7 @@ int write_file(char * buf, char * file, char * mode, size_t bytes, size_t elemen
     fclose(File);
     return written_size;
 }
-long get_file_size(FILE *file) {
+static inline long get_file_size(FILE *file) {
     long size;
     
     fseek(file, 0, SEEK_END);

@@ -6,6 +6,7 @@
 #include "../util/alloc_util.h"
 #include "test_util_funcs.h"
 #include "../db/backend/iter.h"
+#include "../db/backend/lsm.h"
 #pragma once
 
 
@@ -42,10 +43,10 @@ void test_next(){
     seek(it, "k");
     merge_data m = aseDB_iter_next(it);
     char * next= m.value->entry;
-    TEST_ASSERT_EQUAL_STRING("world5570",next);
+    TEST_ASSERT_EQUAL_STRING("value1",next);
     m = aseDB_iter_next(it);
     next = m.value->entry;
-    TEST_ASSERT_EQUAL_STRING("world5572",next);
+    TEST_ASSERT_EQUAL_STRING("value10",next);
     remove_ssts(f->meta->sst_files);
     clean_test_files();
 

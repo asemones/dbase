@@ -32,7 +32,7 @@ void init_test(void) {
     test_buffer = create_buffer(1024);
 }
 
-void end_test(void) {
+void clean(void) {
     
     free_buffer(test_wal->wal_buffer);
     free_buffer(test_wal->fn_buffer);
@@ -55,7 +55,7 @@ void test_seralize_wal(void) {
     char * file_name = buf_ind(test_buffer, 28);
     TEST_ASSERT_EQUAL_STRING(test_filename, file_name);
     
-    end_test();
+    clean();
 }
 
 void test_deseralize_wal(void) {
@@ -99,7 +99,7 @@ void test_deseralize_wal(void) {
     TEST_ASSERT_EQUAL_INT(2, test_wal->fn->len);
     TEST_ASSERT_EQUAL_STRING("test_wal1.bin", *(char**)at(test_wal->fn, 0));
     TEST_ASSERT_EQUAL_STRING("test_wal2.bin", *(char**)at(test_wal->fn, 1));
-    end_test();
+    clean();
 }
 
 void test_write_WAL(void) {
@@ -113,5 +113,5 @@ void test_write_WAL(void) {
    
     TEST_ASSERT_EQUAL_INT(0,bytes_written);
     TEST_ASSERT_EQUAL_size_t(11, test_wal->len); 
-    end_test();
+    clean();
 }

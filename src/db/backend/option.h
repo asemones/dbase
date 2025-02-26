@@ -1,7 +1,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-
+#include <stdbool.h>
 #pragma  once
 
 typedef struct option{
@@ -24,10 +24,12 @@ typedef struct option{
     char * BLOOM_F_N;
     size_t MAX_WAL_FILES;
     size_t NUM_FILES_COMPACT_ZER0;
+    int dict_size_ratio; /*sets the ratio of file size to dict size, will determine real dictionary size. set to 0 for no dict */
+    int compress_level;
 }option;
 
 extern option GLOB_OPTS;
-void set_defaults(option * opt){
+static inline void set_defaults(option * opt){
     opt->SST_TABLE_SIZE = 64 * 1024 * 1024;
     opt->MEM_TABLE_SIZE = 64 * 1024 * 1024;
     opt->SST_TABLE_SIZE_SCALAR = 1.5;
@@ -48,9 +50,9 @@ void set_defaults(option * opt){
     opt->BLOOM_F_N = "bloom.bin";
     opt->NUM_FILES_COMPACT_ZER0 = 5;
 }
-void set_debug_defaults(option * opt){
-    opt->SST_TABLE_SIZE =64* 1024;
-    opt->MEM_TABLE_SIZE = 128 * 1024;
+static inline void set_debug_defaults(option * opt){
+    opt->SST_TABLE_SIZE =  256* 1024;
+    opt->MEM_TABLE_SIZE = 512 * 1024;
     opt->SST_TABLE_SIZE_SCALAR = 1;
     opt->BLOCK_INDEX_SIZE = 8 * 1024;
     opt->LEVEL_0_SIZE = 400 * 1024;
@@ -68,6 +70,9 @@ void set_debug_defaults(option * opt){
     opt->MAX_WAL_FILES = 2;
     opt->WAL_SIZE = opt->MEM_TABLE_SIZE;
     opt->NUM_FILES_COMPACT_ZER0 = 2;
+    opt->dict_size_ratio = 0;
+    opt->compress_level =1;
+
 }
 
 

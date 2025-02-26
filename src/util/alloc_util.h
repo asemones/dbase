@@ -5,13 +5,13 @@
 
 
 
-void * wrapper_alloc (size_t size, void * alloc_struct, void*(*alloc_func)(void*, size_t)){
+static inline void * wrapper_alloc (size_t size, void * alloc_struct, void*(*alloc_func)(void*, size_t)){
     if (alloc_struct != NULL && alloc_func !=NULL){
         return alloc_func(alloc_struct,size);
     }
     else return malloc(size);
 }
-void * wrapper_realloc (void * ptr, size_t size, void * alloc_struct, void*(*alloc_func)(void*, size_t)){
+static inline void * wrapper_realloc (void * ptr, size_t size, void * alloc_struct, void*(*alloc_func)(void*, size_t)){
     if (alloc_struct != NULL && alloc_func !=NULL){
         return alloc_func(alloc_struct,size);
     } 

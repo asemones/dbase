@@ -1,46 +1,42 @@
-# Compiler and flags
-CC = clang
-CFLAGS = -Wall -g -m64 -I${workspaceFolder}/src/tests/unity -gdwarf-4 -mavx #-fsanitize=address
-LDFLAGS = -debug -pthread -luuid
+CC      := clang
+CFLAGS  := -Wall -g -m64 -I./src -gdwarf-4 -mavx
+LDFLAGS := -debug -pthread -luuid -lzstd
+
+OBJDIR := build
+TARGET := $(OBJDIR)/test
 
 
-# Source files and test files
-OBJDIR = build
-SRCS = src/http/driver.c
-TEST_SRCS = src/tests/testrunner.c
-UNITY_SRCS = src/tests/unity/src/unity.c 
-OBJS = $(patsubst src/%.c, $(OBJDIR)/%.o, $(SRCS))
-TEST_OBJS = $(patsubst src/%.c, $(OBJDIR)/%.o, $(TEST_SRCS))
-EXEC = $(OBJDIR)/network
-TEST_EXEC = $(OBJDIR)/test
+ALL_SRCS := $(wildcard src/**/*.c)
+SRCS := $(filter-out src/tests/% src/util/%, $(ALL_SRCS))
+SRCS += $(wildcard src/db/backend/*.c)
+SRCS += $(wildcard src/db/backend/dal/*.c)
+SRCS += src/tests/testrunner.c
+SRCS += src/tests/unity/src/unity.c
 
-# Default target
-all: $(EXEC)
+OBJS   := $(notdir $(SRCS))
+OBJS   := $(OBJS:.c=.o)
+OBJS   := $(addprefix $(OBJDIR)/,$(OBJS))
 
-# Build main executable
-$(EXEC): $(OBJS)
-	$(CC) $(CFLAGS) -o $(EXEC) $(OBJS) $(LDFLAGS)
+# default rule
+all: $(TARGET)
 
-# Build test executable
-$(TEST_EXEC): $(TEST_OBJS)
-	$(CC) $(CFLAGS) -o $(TEST_EXEC) $(TEST_OBJS) $(UNITY_SRCS) $(LDFLAGS)
+$(TARGET): $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LDFLAGS)
 
-# Compile source files
-$(OBJDIR)/%.o: src/%.c | $(OBJDIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+define FIND_SRC
+$(shell echo $(SRCS) | tr ' ' '\n' | grep '/$*.c$$')
+endef
 
-# Run tests
-test: $(TEST_EXEC)
-	 ./$(TEST_EXEC)
+$(OBJDIR)/%.o:
+	@mkdir -p $(OBJDIR)
+	@echo "Compiling $* -> $@"
+	$(CC) $(CFLAGS) -c $(call FIND_SRC,$*) -o $@
 
-$(OBJDIR):
-	mkdir -p $(OBJDIR)
-	mkdir -p $(OBJDIR)/http
-	mkdir -p $(OBJDIR)/tests
-run:$(EXEC)
-	./$(EXEC)
-# Clean up build artifacts
 clean:
-	rm -rf $(OBJDIR) $(EXEC) $(TEST_EXEC)
+	rm -rf $(OBJDIR)
 
-.PHONY: all test clean
+test: $(TARGET)
+	@echo "Running tests..."
+	@./$(TARGET)
+
+.PHONY: all clean test

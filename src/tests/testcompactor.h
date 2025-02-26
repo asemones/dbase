@@ -29,7 +29,7 @@ void prep_test(){
     add_work(thrd, &run_compactor, cm, NULL, &priority);
     
 }
-void kill_test(){
+void end_test(){
     sleep(10);
     shutdown_cm(cm);
     destroy_pool(thrd);
@@ -46,19 +46,19 @@ void kill_test(){
 void fat_db_passive(){
     prep_test();
     create_a_bigbase(engine);
-    kill_test();
+    end_test();
 }
 void random_values_short(){
     const int size_per_add =5000;
     prep_test();
     create_a_bigbase(engine);
     add_random_records_a_z(engine,size_per_add);
-    kill_test();
+    end_test();
 }
 void random_values_long(){
     const int size_per_add =50000;
     prep_test();
     create_a_bigbase(engine);
     add_random_records_a_z(engine,size_per_add);
-    kill_test();
+    end_test();
 }

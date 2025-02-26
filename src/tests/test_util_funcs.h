@@ -191,7 +191,31 @@ void generate_random_prefix(char* buffer, size_t prefix_len) {
     }
     buffer[prefix_len] = '\0';
 }
+void write_random_units(byte_buffer *b, const int iters, const int prefix_size) {
+    for (int i = 0; i < iters; i++){
+        char buf[256];  
 
+        db_unit key_unit;
+        db_unit value_unit;
+
+        generate_random_prefix(buf, prefix_size);
+        key_unit.entry = buf;
+        key_unit.len = strlen(buf);
+        write_db_unit(b, key_unit);
+
+        memset(buf, 0, sizeof(buf));
+
+        generate_random_prefix(buf, prefix_size);
+        value_unit.entry = buf;
+        value_unit.len = strlen(buf);
+        write_db_unit(b, value_unit);
+    }
+}
+void read_entire_sst(byte_buffer * b, sst_f_inf * inf){
+    FILE * file=  fopen(inf->file_name, "rb");
+    int read=  fread(b->buffy, inf->length,1, file);
+    b->curr_bytes += read;
+}
 void add_random_records_a_z(storage_engine *l, const int size) {
    
     srand((unsigned int)time(NULL));

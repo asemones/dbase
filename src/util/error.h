@@ -35,10 +35,10 @@ typedef enum error_codes{
 /*error codes ordered by recency in the call stack*/
 /*Each "worker" gets an error call stsck*/
 /*To finish error codes, concurrency needs to be done. Revist */
-const char * get_error_string(error_codes error);
+static inline const char * get_error_string(error_codes error);
 
 
-void create_error_message(int* error_codes, int num_codes, char* buf) {
+static inline void create_error_message(int* error_codes, int num_codes, char* buf) {
     if (num_codes <= 0 || buf == NULL) {
         return;
     }
@@ -72,7 +72,7 @@ void create_error_message(int* error_codes, int num_codes, char* buf) {
     }
 }
 
-const char* get_error_string(error_codes error) {
+static inline const char* get_error_string(error_codes error) {
     switch(error) {
         case OK:
             return "Operation successful";

@@ -30,7 +30,7 @@ typedef struct merge_data {
     enum source src;
 }merge_data;
 int write_db_unit(byte_buffer * b, db_unit u);
-db_unit read_db_unit(byte_buffer * b);
+void read_db_unit(byte_buffer * b, db_unit * u);
 size_t load_block_into_into_ds(byte_buffer *stream, void *ds, void (*func)(void *, void *, void *));
 int byte_wise_comp(db_unit one, db_unit two);
 int comp_int(db_unit one, db_unit two);

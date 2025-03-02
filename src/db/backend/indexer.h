@@ -13,6 +13,7 @@
 #include "key-value.h"
 #include "../../ds/associative_array.h"
 #include "../../ds/hashtbl.h"
+#include "compression.h"
 #define MAX_KEY_SIZE 100
 #define MAX_F_N_SIZE 64
 #pragma once
@@ -41,7 +42,7 @@ Index Structure:
 - The sst_index will be a list of sorted block_indexs that can be binary searched
 
 */
-
+/*the requirements for a successful compresssion*/
 typedef struct sst_file_info{
     char file_name[MAX_F_N_SIZE];
     //size_t id;
@@ -55,11 +56,7 @@ typedef struct sst_file_info{
     arena * mem_store;
     bool marked;
     bool in_cm_job;
-    ZSTD_DDict* decompress_dict;
-    ZSTD_CDict* compression_dict;
-    ZSTD_CCtx * compr_context;
-    ZSTD_DCtx * decompr_context;
-    void * dict_buffer;
+    sst_cmpr_inf compr_info;
 
 }sst_f_inf;
 

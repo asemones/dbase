@@ -1,5 +1,5 @@
 CC      := clang
-CFLAGS  := -Wall -g -m64 -I./src -gdwarf-4 -mavx
+CFLAGS  := -Wall -g -m64 -I./src -gdwarf-4 -mavx -fsanitize=undefined
 LDFLAGS := -debug -pthread -luuid -lzstd
 
 OBJDIR := build
@@ -17,7 +17,6 @@ OBJS   := $(notdir $(SRCS))
 OBJS   := $(OBJS:.c=.o)
 OBJS   := $(addprefix $(OBJDIR)/,$(OBJS))
 
-# default rule
 all: $(TARGET)
 
 $(TARGET): $(OBJS)

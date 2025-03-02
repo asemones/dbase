@@ -43,7 +43,7 @@ void test_next(){
     seek(it, "k");
     merge_data m = aseDB_iter_next(it);
     char * next= m.value->entry;
-    TEST_ASSERT_EQUAL_STRING("value1",next);
+    TEST_ASSERT_EACH_EQUAL_CHAR("value1",next, strlen(next));
     m = aseDB_iter_next(it);
     next = m.value->entry;
     TEST_ASSERT_EQUAL_STRING("value10",next);

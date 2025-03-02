@@ -70,6 +70,8 @@ int main(void) {
     fprintf(stderr,"Running compression tests\n");
     RUN_TEST(test_regular_compress);
     RUN_TEST(test_regular_decompress);
+    RUN_TEST(test_dict_compress);
+    RUN_TEST(test_dict_decompress);
     fprintf(stderr, "RUNNING METADATA TESTS\n");
     RUN_TEST(test_create_metadata_fresh);
     RUN_TEST(test_use_and_load);

@@ -66,7 +66,7 @@ static inline void set_debug_defaults(option * opt){
     opt->WAL_M_F_N = "WAL_M.bin";
     opt->META_F_N = "meta.bin";
     opt->BLOOM_F_N = "bloom.bin";
-    opt->COMPACTOR_WRITE_SIZE = 2;
+    opt->COMPACTOR_WRITE_SIZE = 200;
     opt->MAX_WAL_FILES = 2;
     opt->WAL_SIZE = opt->MEM_TABLE_SIZE;
     opt->NUM_FILES_COMPACT_ZER0 = 2;

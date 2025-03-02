@@ -145,12 +145,22 @@ int write_blocks_to_file(byte_buffer *dest_buffer, sst_f_inf* curr_sst, int *wri
         write_buffer(dest_buffer, (char*)&ind->num_keys, 2);
         keys = dump_list_ele(entrys, &write_db_entry, dest_buffer, ind->num_keys, keys);
         grab_min_b_key(ind, dest_buffer, loc);
+        if (!strcmp("common10231", ind->min_key)){
+            int l = 0;
+            l++;
+        }
         if (is_avx_supported()){
             ind->checksum =  crc32_avx2((uint8_t*)buf_ind(dest_buffer, loc), ind->len);
         }
         else{
             ind->checksum = crc32((uint8_t*)buf_ind(dest_buffer, loc), ind->len);;
         }
+        if (ind->checksum ==  805801207){
+            FILE * log = fopen("log.txt", "wb+");
+            fwrite(buf_ind(dest_buffer, loc), ind->len, 1, log);
+        }
+        printf("Writing block checksum: %u for len: %zu at offset: %d\n", 
+        ind->checksum, ind->len, loc);
         int bytes_to_skip = GLOB_OPTS.BLOCK_INDEX_SIZE - (dest_buffer->curr_bytes - loc);
         skipped += bytes_to_skip;
         dest_buffer->curr_bytes += bytes_to_skip;
@@ -232,7 +242,7 @@ int merge_tables(byte_buffer *dest_buffer, compact_job_internal * job, arena *a,
     if (curr_file == NULL) return FAILED_OPEN;
 
     block_index current_block = init_block(curr_sst.mem_store, &sst_offset_tracker);
-    sst_offset_tracker = 0;
+    //sst_offset_tracker = 0;
     
     db_unit last_key;
   
@@ -249,7 +259,7 @@ int merge_tables(byte_buffer *dest_buffer, compact_job_internal * job, arena *a,
         }
         merge_data best_entry = discard_same_keys(pq, its, c, current);
         
-        if (block_b_count + entry_len(best_entry) > GLOB_OPTS.BLOCK_INDEX_SIZE){
+        if (block_b_count + entry_len(best_entry) >= GLOB_OPTS.BLOCK_INDEX_SIZE){
             complete_block(&curr_sst, &current_block, block_b_count);
             reset_block_counters(&block_b_count, &sst_b_count, &num_block_counter);
             current_block = init_block(curr_sst.mem_store, &sst_offset_tracker); 

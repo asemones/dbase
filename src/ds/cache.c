@@ -113,18 +113,23 @@ cache_entry* retrieve_entry(cache *c, block_index *index, const char *file_name)
     if (buffer->utility_ptr) {
         add_kv(c->map, buffer->utility_ptr, (void*)(uintptr_t)idx);
     }
-    pthread_mutex_unlock(&c->c_lock);
-    if (!verify_data((uint8_t*)buffer->buffy, buffer->curr_bytes, index->checksum)) {
-        pthread_mutex_lock(&c->c_lock);
+    /*race condition, c->frames[idx] gets overwritten*/
+    if (!verify_data((uint8_t*)buffer->buffy, index->len, index->checksum)) {
         remove_kv(c->map, buffer->utility_ptr);
         fprintf(stderr, "invalid data\n");
+        fprintf(stderr, "block offset %ld filename %s cache size %d\n", index->offset, file_name, c->filled_pages);
+        printf("Checking block checksum: %u for len: %zu at offset: %ld\n", 
+        index->checksum, buffer->curr_bytes, index->offset);
+        uint32_t computed_checksum = crc32((uint8_t*)buffer->buffy, buffer->curr_bytes);
+        printf("Computed: %u, Original: %u, Match: %d\n", 
+        computed_checksum, index->checksum, computed_checksum == index->checksum);
         fclose(sst_file);
         pthread_mutex_unlock(&c->c_lock);
         return NULL;
     }
+    pthread_mutex_unlock(&c->c_lock);
     load_block_into_into_ds(buffer, ce->ar, &into_array);
     fclose(sst_file);
-    pthread_mutex_unlock(&c->c_lock);
     return ce;
 }
 

@@ -17,10 +17,7 @@ sst_f_inf create_sst_empty(){
     file.filter = bloom(NUM_HASH_SST,2000, false, NULL);
     file.marked = false;
     file.in_cm_job = false;
-    file.compression_dict = NULL;
-    file.decompr_context = ZSTD_createDCtx();
-    file.compr_context = ZSTD_createCCtx();
-    file.dict_buffer = NULL;
+    init_sst_compr_inf(&file.compr_info, NULL);
     gettimeofday(&file.time, NULL);
     return file;
 
@@ -34,10 +31,7 @@ sst_f_inf create_sst_filter(bloom_filter * b){
     file.filter = b;
     file.marked = false;
     file.in_cm_job = false;
-    file.compression_dict = NULL;
-    file.decompr_context = ZSTD_createDCtx();
-    file.compr_context = ZSTD_createCCtx();
-    file.dict_buffer = NULL;
+    init_sst_compr_inf(&file.compr_info, NULL);
     gettimeofday(&file.time, NULL);
     return file;
 
@@ -247,11 +241,8 @@ void free_sst_inf(void * ss){
     sst->block_indexs = NULL;
     sst->mem_store = NULL;
     free_bit(sst->filter->ba);
+    free_sst_cmpr_inf(&sst->compr_info);
     sst->filter = NULL;
-    ZSTD_freeCCtx(sst->compr_context);
-    ZSTD_freeDCtx(sst->decompr_context);
-    ZSTD_freeCDict(sst->compression_dict);
-    if (sst->dict_buffer!= NULL) free(sst->dict_buffer);
     sst = NULL;
 
     //free(sst);

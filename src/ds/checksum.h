@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-
+#include <stdio.h>
 
 
 /*write blazing fast checksum function-MUST outpace fastest nvme io speeds*/

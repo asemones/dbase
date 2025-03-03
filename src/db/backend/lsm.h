@@ -17,6 +17,7 @@
 #include "key-value.h"
 #include "WAL.h"
 #include "indexer.h"
+#include  "../../ds/cache_shrd_mnger.h"
 #ifndef LSM_H
 #define LSM_H
 
@@ -58,7 +59,7 @@ typedef struct storage_engine{
     meta_data * meta;
     size_t num_table;
     struct_pool * write_pool;
-    cache * cach;
+    shard_controller cach;
     WAL * w;
     pthread_cond_t * compactor_wait;
     pthread_mutex_t * compactor_wait_mtx;

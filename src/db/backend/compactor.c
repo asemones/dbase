@@ -43,7 +43,7 @@ int compare_jobs(const void * job1, const void * job2){
 
     return job_1->id > job_2->id;
 }
-compact_manager * init_cm(meta_data * meta, cache * c){
+compact_manager * init_cm(meta_data * meta, shard_controller * c){
     compact_manager * manager = (compact_manager*)wrapper_alloc((sizeof(compact_manager)), NULL,NULL);
     if (manager == NULL) return NULL;
     for (int i = 0;  i < NUM_THREADP ;i++){
@@ -97,7 +97,7 @@ int entry_len(merge_data entry){
     return entry.key->len + sizeof(entry.key->len) + entry.value->len + sizeof(entry.value->len);
 
 }
-merge_data discard_same_keys(frontier *pq, sst_iter *its, cache *c, merge_data initial) {
+merge_data discard_same_keys(frontier *pq, sst_iter *its, shard_controller * c , merge_data initial) {
     merge_data best_entry = initial;
     merge_data current = initial;
 
@@ -202,7 +202,7 @@ block_index init_block(arena * mem_store, size_t* off_track){
 
 
 /*min key copying screwed up*/
-int merge_tables(byte_buffer *dest_buffer, compact_job_internal * job, arena *a, cache * c) {
+int merge_tables(byte_buffer *dest_buffer, compact_job_internal * job, arena *a, shard_controller * c) {
     sst_iter  * its = malloc(sizeof(sst_iter)* job->to_merge->len);
     frontier *pq = Frontier(sizeof(merge_data), 0, &compare_merge_data);
     if (pq == NULL) return STRUCT_NOT_MADE;
@@ -214,7 +214,7 @@ int merge_tables(byte_buffer *dest_buffer, compact_job_internal * job, arena *a,
     for (int i = 0; i < job->to_merge->len; i++) {
         sst_f_inf * sst = at(job->to_merge,i);
         init_sst_iter(&its[i], sst);
-        cache_entry *ce = retrieve_entry(c, its[i].cursor.index, sst->file_name);
+        cache_entry *ce = retrieve_entry_sharded(*c, its[i].cursor.index, sst->file_name);
         if (ce == NULL){
             free(its);
             return INVALID_DATA;

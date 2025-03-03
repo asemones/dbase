@@ -57,11 +57,6 @@ int sample_for_dict(sst_cmpr_inf * sst, int sst_size, int compression_level, voi
     if (sst->compression_dict == NULL){
         sst->compression_dict = ZSTD_createCDict(sst->dict_buffer, dict_size, compression_level);
     }
-    if (ZSTD_isError(res)){
-        ZSTD_freeCDict(sst->compression_dict);
-        sst->compression_dict= NULL;
-        return res;
-    }
     if (sst->decompress_dict == NULL){
         sst->decompress_dict= ZSTD_createDDict(sst->dict_buffer, dict_size);
     }

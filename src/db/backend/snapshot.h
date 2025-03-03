@@ -6,6 +6,7 @@
 #include "../../util/stringutil.h"
 #include "indexer.h"
 #include "../../ds/cache.h"
+#include "../../ds/cache_shrd_mnger.h"
 #define LEVELS 7
 #define TIME_STAMP_SIZE 64
 #pragma once
@@ -24,13 +25,13 @@ typedef struct snapshot{
     int reference_counter;
     pthread_mutex_t counter_lock;
     list * sst_files[LEVELS];
-    cache * cache_ref; /*for reading and writing*/
+    shard_controller* cache_ref; /*for reading and writing*/
 }snapshot;
 
 
 /*creates copy of metadata info*/
 snapshot * create_snap(void);
-int init_snapshot(snapshot * master, snapshot * s, cache * c);
+int init_snapshot(snapshot * master, snapshot * s, shard_controller* c);
 int destroy_snapshot(snapshot * s);
 void ref_snapshot(snapshot * s);
 void deref_snapshot(snapshot * s);

@@ -46,7 +46,7 @@ typedef struct aseDB_iter {
     list * l_0_sst_iters;
     frontier * pq;
     list * ret;
-    cache * c;
+    shard_controller * c;
 } aseDB_iter;
 int compare_merge_data(const void * one, const void * two);
 aseDB_iter * create_aseDB_iter(void);
@@ -56,12 +56,12 @@ void init_mem_table_iters(mem_table_iter *mem_table_iters, storage_engine *s, si
 void init_level_iters(level_iter *level_iters, storage_engine *s, size_t num_levels);
 void init_level_0_sst_iters(list *l_0_sst_iters, storage_engine *s);
 void init_aseDB_iter(aseDB_iter *dbi, storage_engine *s);
-merge_data next_entry(block_iter *b, cache * c, char * file_name);
-merge_data next_key_block(sst_iter *sst, cache *c);
-merge_data next_sst_block(level_iter *level, cache *c);
+merge_data next_entry(block_iter *b,   shard_controller * c, char * file_name);
+merge_data next_key_block(sst_iter *sst, shard_controller  *c);
+merge_data next_sst_block(level_iter *level,   shard_controller *c);
 merge_data get_curr_kv(sst_iter sst_it);
 merge_data next_entry_memtable(mem_table_iter * iter);
-void seek_sst(sst_iter* sst_it, cache * cache, const char * prefix);
+void seek_sst(sst_iter* sst_it,   shard_controller * c, const char * prefix);
 void seek(aseDB_iter * iter, const char * prefix);
 merge_data same_merge_key(const merge_data next, const merge_data last);
 merge_data aseDB_iter_next(aseDB_iter * iter);

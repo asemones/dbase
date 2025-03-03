@@ -26,6 +26,7 @@ typedef struct option{
     size_t NUM_FILES_COMPACT_ZER0;
     int dict_size_ratio; /*sets the ratio of file size to dict size, will determine real dictionary size. set to 0 for no dict */
     int compress_level;
+    int num_cache;
 }option;
 
 extern option GLOB_OPTS;
@@ -49,6 +50,7 @@ static inline void set_defaults(option * opt){
     opt->META_F_N = "meta.bin";
     opt->BLOOM_F_N = "bloom.bin";
     opt->NUM_FILES_COMPACT_ZER0 = 5;
+    opt->num_cache = 128;
 }
 static inline void set_debug_defaults(option * opt){
     opt->SST_TABLE_SIZE =  256* 1024;
@@ -72,6 +74,7 @@ static inline void set_debug_defaults(option * opt){
     opt->NUM_FILES_COMPACT_ZER0 = 2;
     opt->dict_size_ratio = 0;
     opt->compress_level =1;
+    opt->num_cache = 8;
 
 }
 

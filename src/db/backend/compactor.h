@@ -11,6 +11,7 @@
 #include "option.h"
 #include "iter.h"
 #include "../../ds/threadpool.h"
+#include "../../ds/cache_shrd_mnger.h"
 #include <time.h>
 #include <unistd.h>
 #ifndef COMPACTOR_H
@@ -94,23 +95,23 @@ typedef struct compact_manager{
     bool check_meta_cond;
     bool lvl0_job_running;
     bool exit;
-    cache * c; // of type bloom_filter, FROM META DATA
+    shard_controller * c; // of type bloom_filter, FROM META DATA
 }compact_manager;
 void free_cm(compact_manager * manager);
 
 compact_infos* create_ci(size_t page_size);
 void set_cm_sst_files(meta_data * meta, compact_manager * cm);
 int compare_jobs(const void * job1, const void * job2);
-compact_manager * init_cm(meta_data * meta, cache * c);
+compact_manager * init_cm(meta_data * meta, shard_controller * c);
 int compare_time_stamp(struct timeval t1, struct timeval t2);
 int entry_len(merge_data entry);
-merge_data discard_same_keys(frontier *pq, sst_iter *its, cache *c, merge_data initial);
+merge_data discard_same_keys(frontier *pq, sst_iter *its, shard_controller *c, merge_data initial);
 void complete_block(sst_f_inf * curr_sst, block_index * current_block, int block_b_count);
 void reset_block_counters(int *block_b_count, int *sst_b_count, int *num_block_counter);
 int write_blocks_to_file(byte_buffer *dest_buffer, sst_f_inf* curr_sst, int *written_block_pointer, list * entrys, FILE *curr_file);
 void process_sst(byte_buffer *dest_buffer, sst_f_inf *curr_sst, FILE *curr_file, compact_job_internal*job, int sst_b_count);
 block_index init_block(arena * mem_store, size_t* off_track);
-int merge_tables(byte_buffer *dest_buffer, compact_job_internal * job, arena *a, cache * c);
+int merge_tables(byte_buffer *dest_buffer, compact_job_internal * job, arena *a, shard_controller * c);
 int calculate_overlap(char *min1, char *max1, char *min2, char *max2);
 int get_level_size(int level);
 void reset_ci(void * ci);

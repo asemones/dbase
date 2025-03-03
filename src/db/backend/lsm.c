@@ -83,8 +83,7 @@ storage_engine * create_engine(char * file, char * bloom_file){
     engine->num_table = 0;
     engine->write_pool = create_pool(WRITER_BUFFS);
     if (engine->write_pool == NULL) return NULL;
-    engine->cach= create_cache(GLOB_OPTS.LRU_CACHE_SIZE, GLOB_OPTS.BLOCK_INDEX_SIZE);
-    if (engine->cach == NULL) return NULL;
+    engine->cach= create_shard_controller(GLOB_OPTS.num_cache,GLOB_OPTS.LRU_CACHE_SIZE, GLOB_OPTS.BLOCK_INDEX_SIZE);
     for(int i = 0; i < WRITER_BUFFS; i++){
         byte_buffer * buffer = create_buffer( GLOB_OPTS.MEM_TABLE_SIZE*1.5);
         if (buffer == NULL) return NULL;
@@ -189,7 +188,7 @@ char * disk_read(storage_engine * engine, const char * keyword){
         size_t index_block= find_block(sst, keyword);
         block_index * index = at(sst->block_indexs, index_block);
         
-        cache_entry * c = retrieve_entry(engine->cach, index, sst->file_name);
+        cache_entry * c = retrieve_entry_sharded(engine->cach, index, sst->file_name);
         if (c == NULL ){
             engine->error_code = INVALID_DATA;
             return NULL;
@@ -218,7 +217,7 @@ char * disk_read_snap(snapshot * snap, const char * keyword){
         size_t index_block= find_block(sst, keyword);
         block_index * index = at(sst->block_indexs, index_block);
         
-        cache_entry * c = retrieve_entry(snap->cache_ref, index, sst->file_name);
+        cache_entry * c = retrieve_entry_sharded(*snap->cache_ref, index, sst->file_name);
         if (c == NULL ){
             return NULL;
         }
@@ -373,7 +372,7 @@ void free_engine(storage_engine * engine, char* meta_file,  char * bloom_file){
     kill_WAL(engine->w, request_struct(engine->write_pool));
     return_struct(engine->write_pool, b, &reset_buffer);
     free_pool(engine->write_pool, &free_buffer);
-    free_cache(engine->cach);
+    free_shard_controller(&engine->cach);
     pthread_mutex_destroy(engine->compactor_wait_mtx);
     pthread_cond_destroy(engine->compactor_wait);
     free(engine->compactor_wait);

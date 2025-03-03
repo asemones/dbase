@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <pthread.h>
 #include "../util/alloc_util.h"
-#include "stdbool.h"
+#include <stdbool.h>
 #ifndef STRUCTURE_POOL_H
 #define STRUCTURE_POOL_H
 #define mutex pthread_mutex_t

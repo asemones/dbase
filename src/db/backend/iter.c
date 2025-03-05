@@ -75,7 +75,7 @@ void init_aseDB_iter(aseDB_iter *dbi, storage_engine *s) {
     init_level_iters(dbi->l_1_n_level_iters, s, 6);
 }
 /* returns the next value*/
-merge_data next_entry(block_iter *b, shard_controller * c, char * file_name) {
+merge_data next_entry(block_iter *b, shard_controller * c,sst_f_inf * inf) {
     merge_data final;
     final.key = NULL;
     final.value = NULL;
@@ -83,7 +83,7 @@ merge_data next_entry(block_iter *b, shard_controller * c, char * file_name) {
        return final;
     }
     if (b->index->num_keys!= b->arr->len){
-        cache_entry * ce = retrieve_entry_sharded(*c,b->index, file_name);
+        cache_entry * ce = retrieve_entry_sharded(*c, b->index, inf->file_name, inf);
         b->arr = ce->ar;
     }
     db_unit *ret = &b->arr->values[b->curr_key_ind];
@@ -110,7 +110,7 @@ merge_data next_key_block(sst_iter *sst,  shard_controller * c) {
         if (index == NULL) {
             return bad_return;
         }
-        cache_entry *ce = retrieve_entry_sharded(*c, index, sst->file->file_name);
+        cache_entry *ce = retrieve_entry_sharded(*c, index, sst->file->file_name, sst->file);
         if (ce == NULL || ce->ar == NULL) {
             return bad_return;
         }
@@ -118,7 +118,7 @@ merge_data next_key_block(sst_iter *sst,  shard_controller * c) {
         sst->cursor.curr_key_ind = 0;
         sst->cursor.index = index;
     }
-    return next_entry(&sst->cursor, c, sst->file->file_name);
+    return next_entry(&sst->cursor, c, sst->file);
 }
 merge_data next_sst_block(level_iter *level,shard_controller * c) {
     merge_data bad_return;
@@ -163,7 +163,7 @@ void seek_sst(sst_iter* sst_it, shard_controller * cach ,const char * prefix){
         sst_it->curr_index = b_index;
         block_index * entry = at(f->block_indexs, b_index);
         sst_it->cursor.index = entry;
-        cache_entry * c = retrieve_entry_sharded(*cach, sst_it->cursor.index, f->file_name);
+        cache_entry * c = retrieve_entry_sharded(*cach, sst_it->cursor.index, f->file_name, f);
         int k_v_array_index = prefix_b_search(c->ar,prefix);
         sst_it->cursor.arr = c->ar;
         sst_it->cursor.curr_key_ind = k_v_array_index;

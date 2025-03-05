@@ -188,7 +188,7 @@ char * disk_read(storage_engine * engine, const char * keyword){
         size_t index_block= find_block(sst, keyword);
         block_index * index = at(sst->block_indexs, index_block);
         
-        cache_entry * c = retrieve_entry_sharded(engine->cach, index, sst->file_name);
+        cache_entry * c = retrieve_entry_sharded(engine->cach, index, sst->file_name, sst);
         if (c == NULL ){
             engine->error_code = INVALID_DATA;
             return NULL;
@@ -217,7 +217,7 @@ char * disk_read_snap(snapshot * snap, const char * keyword){
         size_t index_block= find_block(sst, keyword);
         block_index * index = at(sst->block_indexs, index_block);
         
-        cache_entry * c = retrieve_entry_sharded(*snap->cache_ref, index, sst->file_name);
+        cache_entry * c = retrieve_entry_sharded(*snap->cache_ref, index, sst->file_name, sst);
         if (c == NULL ){
             return NULL;
         }
@@ -238,23 +238,6 @@ char* read_record_snap(storage_engine * engine, const char * keyword, snapshot *
     if (entry== NULL) return disk_read_snap(s,keyword);
     return entry->value.entry; 
 }
-/*REWRITE THIS FUNCTION AFTER EVERYTHING ELSE*/
-/*
-int delete_record(storage_engine * engine, const char * keyword, db_unit key , dict * read_dict){
-    Node* entry = search_list(engine->table[CURRENT_TABLE]->skip,(char*)keyword);
-    if (entry == NULL && alloc_entry!=NULL){
-        memcpy(alloc_entry->keyword, keyword, strlen(keyword));
-        memcpy(alloc_entry->value, TOMB_STONE,2);
-        delete_element(engine->table[CURRENT_TABLE]->skip,alloc_entry->keyword);
-        insert_list(engine->table[CURRENT_TABLE]->skip, alloc_entry->keyword, alloc_entry->value);
-        return 1;
-    }
-    if (entry == NULL) return -1;
-    memcpy(entry->value, TOMB_STONE,2);
-    return 0;
-}
-*/
-/*THIS IS A NEW FUNCTION FOR THE NEW SYSTEM*/
 void seralize_table(SkipList * list, byte_buffer * buffer, sst_f_inf * s){
     if (list == NULL) return;
     Node * node = list->header->forward[0];
@@ -296,41 +279,70 @@ void seralize_table(SkipList * list, byte_buffer * buffer, sst_f_inf * s){
 }
 
 void lock_table(storage_engine * engine){
+  
    engine->table[CURRENT_TABLE]->immutable = true;
    swap(&engine->table[CURRENT_TABLE], &engine->table[PREV_TABLE],8);
    engine->num_table++;
+   
    clear_table(engine->table[CURRENT_TABLE]);
+
 }
 int flush_table(storage_engine * engine){
+   
     mem_table * table = engine->table[PREV_TABLE];
+    
     byte_buffer * buffer = request_struct(engine->write_pool);
+    byte_buffer* compressed_buffer = request_struct(engine->write_pool);
     meta_data * meta = engine->meta;
   
 
     sst_f_inf sst_s = create_sst_filter(table->filter);
+    
 
     sst_f_inf * sst = &sst_s;
-
     if (table->bytes <= 0) {
+        printf("DEBUG: Table bytes <= 0, skipping flush\n");
         return_struct(engine->write_pool, buffer,&reset_buffer);
         return -1;
     }
     seralize_table(table->skip, buffer, sst);
     sst->length = buffer->curr_bytes;
-    buffer->curr_bytes +=10;
-    sst->block_start = buffer->curr_bytes;
+    if (GLOB_OPTS.compress_level > -5){   
+        handle_compression(sst,buffer, compressed_buffer, NULL);
+        sst->compressed_len = compressed_buffer->curr_bytes;
+        return_struct(engine->write_pool, buffer, &reset_buffer);
+        buffer = compressed_buffer;
+        buffer->curr_bytes +=2;
+        sst->block_start = sst->compressed_len + 2;
+    }
+    else{
+        buffer->curr_bytes +=2;
+        sst->block_start = sst->length + 2;
+        sst->compressed_len = 0;
+    }
     meta->db_length+= buffer->curr_bytes;
     all_index_stream(sst->block_indexs->len, buffer, sst->block_indexs);
     copy_filter(sst->filter, buffer);
     generate_unique_sst_filename(sst->file_name, MAX_F_N_SIZE, LVL_0);
+    
+    sst->use_dict_compression = false;
+
+    if (compressed_buffer == NULL) {
+        return_struct(engine->write_pool, buffer, &reset_buffer);
+        return -1;
+    }
     FILE * sst_f = fopen(sst->file_name, "wb");
-    write_wrapper(&buffer->buffy[0], sizeof(unsigned char),buffer->curr_bytes,sst_f);
+    
+    write_wrapper(buffer->buffy, sizeof(unsigned char), buffer->curr_bytes, sst_f);
+    return_struct(engine->write_pool, buffer, &reset_buffer);
     fflush(sst_f);
     fsync(sst_f->_fileno);
     meta->num_sst_file ++;
     insert(meta->sst_files[0], sst);
-    table->immutable= false;
-    return_struct(engine->write_pool, buffer,&reset_buffer);
+
+    
+    table->immutable = false;
+    table->bytes = 0;
   
     if (engine->cm_ref!= NULL) *engine->cm_ref = true;
     pthread_cond_signal(engine->compactor_wait);
@@ -346,15 +358,21 @@ void free_one_table(mem_table * table){
     table = NULL;
 }
 void dump_tables(storage_engine * engine){
+    printf("DEBUG: Starting dump_tables\n");
     for(int i = 0;  i < LOCKED_TABLE_LIST_LENGTH; i++){
         if (engine->table[i]== NULL) continue;
+        printf("DEBUG: Dump table[%d] - addr: %p, bytes: %zu, immutable: %d\n",
+               i, (void*)engine->table[i], engine->table[i]->bytes, engine->table[i]->immutable);
+        
         if (engine->table[i]->bytes > 0 && i==0){
+      
             //this should be changed asap to stop edgecases
             lock_table(engine);
             flush_table(engine);
         }
     }
-    //fclose(engine->table->file);  
+    printf("DEBUG: Finished dump_tables\n");
+    //fclose(engine->table->file);
 }
 void free_tables(storage_engine * engine){
     for(int i = 0;  i < LOCKED_TABLE_LIST_LENGTH; i++){
@@ -368,9 +386,7 @@ void free_engine(storage_engine * engine, char* meta_file,  char * bloom_file){
     destroy_meta_data(meta_file, bloom_file,engine->meta);  
     engine->meta = NULL;
     free_tables(engine);
-    byte_buffer * b = request_struct(engine->write_pool);
     kill_WAL(engine->w, request_struct(engine->write_pool));
-    return_struct(engine->write_pool, b, &reset_buffer);
     free_pool(engine->write_pool, &free_buffer);
     free_shard_controller(&engine->cach);
     pthread_mutex_destroy(engine->compactor_wait_mtx);

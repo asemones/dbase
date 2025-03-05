@@ -13,7 +13,7 @@ so i have two different "copies", one for the pq and one for the regular system*
 #define GB 1073741824
 #define PREV 1
 #define END_OF_BLOCK 0x04
-#define NUM_PAGE_BUFFERS 50
+#define NUM_PAGE_BUFFERS 15
 #define NUM_BIG_BUFFERS 5
 
 compact_infos* create_ci(size_t page_size){
@@ -61,17 +61,27 @@ compact_manager * init_cm(meta_data * meta, shard_controller * c){
     for (int i =0 ; i < NUM_THREAD*NUM_THREADP; i++){
         insert_struct(manager->arena_pool, calloc_arena(1*MB));
     }
-    manager->page_buffer_pool = create_pool(100);
+    manager->dict_buffer_pool = create_pool(NUM_PAGE_BUFFERS);
+    int divsor = GLOB_OPTS.dict_size_ratio > 0 ? GLOB_OPTS.dict_size_ratio : 1;
     for (int i = 0; i < NUM_PAGE_BUFFERS; i++){
-        insert_struct(manager->page_buffer_pool, create_buffer(GLOB_OPTS.BLOCK_INDEX_SIZE));
+        insert_struct(manager->dict_buffer_pool, create_buffer(GLOB_OPTS.SST_TABLE_SIZE* 1.1));
     }
-    manager->big_buffer_pool = create_pool(NUM_BIG_BUFFERS);    
+    manager->big_buffer_pool = create_pool(NUM_BIG_BUFFERS);
     for (int i = 0; i < NUM_BIG_BUFFERS ; i++)
     {
         insert_struct(manager->big_buffer_pool, create_buffer(MB));
-    }   
+    }
+    
+    // Create compression buffer pool
+    manager->compression_buffer_pool = create_pool(NUM_PAGE_BUFFERS);
+    int bufsize = GLOB_OPTS.SST_TABLE_SIZE * 1.1;
+    for (int i = 0; i < NUM_PAGE_BUFFERS; i++) {
+        insert_struct(manager->compression_buffer_pool, create_buffer(bufsize));
+    }
+    
     manager->c = c;
-    if (manager->compact_pool == NULL  || manager->arena_pool == NULL || manager->big_buffer_pool == NULL || manager->page_buffer_pool == NULL ){
+    if (manager->compact_pool == NULL  || manager->arena_pool == NULL || manager->big_buffer_pool == NULL ||
+        manager->dict_buffer_pool == NULL || manager->compression_buffer_pool == NULL){
         return NULL;
     }
     manager->job_queue = Frontier(sizeof(compact_job_internal), false, &compare_jobs);
@@ -131,15 +141,21 @@ void complete_block(sst_f_inf * curr_sst, block_index * current_block, int block
     memset(current_block, 0, sizeof(*current_block));
     *current_block = create_ind_stack(10 *(GLOB_OPTS.BLOCK_INDEX_SIZE/(4*1024)));
 }
-void reset_block_counters(int *block_b_count, int *sst_b_count, int *num_block_counter){
+void reset_block_counters(int *block_b_count, int *sst_b_count){
     *block_b_count = 2;
     *sst_b_count +=2;
-    *num_block_counter+=1;
 }
-int write_blocks_to_file(byte_buffer *dest_buffer, sst_f_inf* curr_sst, int *written_block_pointer, list * entrys, FILE *curr_file) {
+int write_blocks_to_file(byte_buffer *dest_buffer, byte_buffer * compression, byte_buffer * dict_buffer, sst_f_inf* curr_sst, list * entrys, FILE *curr_file) {
     int keys = 0;
     int skipped = 0;
-    for (int i = *written_block_pointer; i < curr_sst->block_indexs->len; i++) {
+    if (compression->max_bytes < GLOB_OPTS.SST_TABLE_SIZE){
+        curr_sst->use_dict_compression = false;
+    }
+    else{
+        curr_sst->use_dict_compression = true;
+    }
+    bool compress = (GLOB_OPTS.compress_level > -5);
+    for (int i = 0; i < curr_sst->block_indexs->len; i++) {
         block_index *ind = at(curr_sst->block_indexs, i);
         int loc = dest_buffer->curr_bytes;
         write_buffer(dest_buffer, (char*)&ind->num_keys, 2);
@@ -155,24 +171,36 @@ int write_blocks_to_file(byte_buffer *dest_buffer, sst_f_inf* curr_sst, int *wri
         else{
             ind->checksum = crc32((uint8_t*)buf_ind(dest_buffer, loc), ind->len);;
         }
-        if (ind->checksum ==  805801207){
+        if (ind->checksum ==  2561137012){
             FILE * log = fopen("log.txt", "wb+");
             fwrite(buf_ind(dest_buffer, loc), ind->len, 1, log);
         }
-        printf("Writing block checksum: %u for len: %zu at offset: %d\n", 
+        printf("Writing block checksum: %u for len: %zu at offset: %d\n",
         ind->checksum, ind->len, loc);
+        /*set the offset properly because we are no longer skippin gbytes. this will get updated later in compression func*/
+        ind->offset = dest_buffer->curr_bytes - ind->len;
+        if (compress) continue;
+        /*zero point in skipping bytes for compressed blocks*/
         int bytes_to_skip = GLOB_OPTS.BLOCK_INDEX_SIZE - (dest_buffer->curr_bytes - loc);
         skipped += bytes_to_skip;
         dest_buffer->curr_bytes += bytes_to_skip;
-        (*written_block_pointer)++;
     }
-    write_wrapper(dest_buffer->buffy, dest_buffer->curr_bytes, 1, curr_file);
+    curr_sst->length = dest_buffer->curr_bytes;
+    if (compress){
+        handle_compression(curr_sst, dest_buffer, compression,dict_buffer);
+        curr_sst->compressed_len = compression->curr_bytes;
+        write_wrapper(compression->buffy, compression->curr_bytes, 1, curr_file);
+        curr_sst->block_start = curr_sst->compressed_len;
+    }
+    else{
+        write_wrapper(dest_buffer->buffy, dest_buffer->curr_bytes, 1, curr_file);
+    }
     fflush(curr_file);
     fsync(curr_file->_fileno);
     return skipped;
 }
 void process_sst(byte_buffer *dest_buffer, sst_f_inf *curr_sst, FILE *curr_file, compact_job_internal*job, int sst_b_count) {
-    fseek(curr_file, curr_sst->block_start, SEEK_SET);
+    curr_sst->block_start = ftell(curr_file);
     reset_buffer(dest_buffer);
     block_index * b_0= at(curr_sst->block_indexs,0);
     memcpy(curr_sst->min, b_0->min_key, 40);
@@ -181,13 +209,18 @@ void process_sst(byte_buffer *dest_buffer, sst_f_inf *curr_sst, FILE *curr_file,
     }
     copy_filter(curr_sst->filter, dest_buffer);
 
+    /*write bloom filters/file metadata*/
     write_wrapper(dest_buffer->buffy, dest_buffer->curr_bytes, 1, curr_file);
+    /*then write our dictionary data if applicable*/
+    if (curr_sst->compr_info.dict_len > 0){
+        curr_sst->compr_info.dict_offset = ftell(curr_file);
+        write_wrapper(curr_sst->compr_info.dict_buffer, 1, curr_sst->compr_info.dict_len, curr_file);
+    }
     fflush(curr_file);
     fsync(curr_file->_fileno);
     fclose(curr_file);
     reset_buffer(dest_buffer);
-    //curr_sst->in_cm_job = true;
-    curr_sst->length = sst_b_count;
+
     gettimeofday(&curr_sst->time, NULL);
     insert(job->new_sst_files, curr_sst);
     memset(curr_sst, 0, sizeof(*curr_sst));
@@ -202,7 +235,7 @@ block_index init_block(arena * mem_store, size_t* off_track){
 
 
 /*min key copying screwed up*/
-int merge_tables(byte_buffer *dest_buffer, compact_job_internal * job, arena *a, shard_controller * c) {
+int merge_tables(byte_buffer *dest_buffer, byte_buffer * compression_buffer, compact_job_internal * job, byte_buffer * dict_buffer, shard_controller * c) {
     sst_iter  * its = malloc(sizeof(sst_iter)* job->to_merge->len);
     frontier *pq = Frontier(sizeof(merge_data), 0, &compare_merge_data);
     if (pq == NULL) return STRUCT_NOT_MADE;
@@ -214,7 +247,7 @@ int merge_tables(byte_buffer *dest_buffer, compact_job_internal * job, arena *a,
     for (int i = 0; i < job->to_merge->len; i++) {
         sst_f_inf * sst = at(job->to_merge,i);
         init_sst_iter(&its[i], sst);
-        cache_entry *ce = retrieve_entry_sharded(*c, its[i].cursor.index, sst->file_name);
+        cache_entry *ce = retrieve_entry_sharded(*c, its[i].cursor.index, sst->file_name, sst);
         if (ce == NULL){
             free(its);
             return INVALID_DATA;
@@ -224,14 +257,9 @@ int merge_tables(byte_buffer *dest_buffer, compact_job_internal * job, arena *a,
         first_entry.index = i;
         enqueue(pq, &first_entry);
     }
-    // block counter determines when to write a block. num_block_counter counts the number of blocks, writing them
-    // all to file when its equal to the global setting. sst_b_count tracks ssts
-    int block_b_count =2;
-    int num_block_counter = 0;
+    // block counter determines when to write a block. sst_b_count tracks ssts
+    int block_b_count = 2;
     int sst_b_count = 2;
-    int written_block_pointer = 0;
-   
-   
    
     size_t sst_offset_tracker = 0;
     sst_f_inf  curr_sst= create_sst_empty();
@@ -261,25 +289,17 @@ int merge_tables(byte_buffer *dest_buffer, compact_job_internal * job, arena *a,
         
         if (block_b_count + entry_len(best_entry) >= GLOB_OPTS.BLOCK_INDEX_SIZE){
             complete_block(&curr_sst, &current_block, block_b_count);
-            reset_block_counters(&block_b_count, &sst_b_count, &num_block_counter);
-            current_block = init_block(curr_sst.mem_store, &sst_offset_tracker); 
+            reset_block_counters(&block_b_count, &sst_b_count);
+            current_block = init_block(curr_sst.mem_store, &sst_offset_tracker);
             merge_data * this_block_max = get_last(entrys);
-            memcpy(curr_sst.max, this_block_max->key->entry, this_block_max->key->len); 
-        }
-        if (num_block_counter >= GLOB_OPTS.COMPACTOR_WRITE_SIZE  && num_block_counter > 0){
-            sst_b_count+= write_blocks_to_file(dest_buffer, &curr_sst, &written_block_pointer, entrys, curr_file);
-            reset_buffer(dest_buffer);
-            merge_data * last=  get_last(entrys);
-            last_key = *last->key;
-            entrys->len = 0; // to stop edgecase of max being null
-            num_block_counter = 0;
+            memcpy(curr_sst.max, this_block_max->key->entry, this_block_max->key->len);
         }
         if (sst_offset_tracker + entry_len(best_entry) >= GLOB_OPTS.SST_TABLE_SIZE || (block_b_count == 0 && sst_offset_tracker == GLOB_OPTS.SST_TABLE_SIZE)){
             
             complete_block(&curr_sst, &current_block, block_b_count);
-            reset_block_counters(&block_b_count, &sst_b_count, &num_block_counter);
+            reset_block_counters(&block_b_count, &sst_b_count);
             
-            write_blocks_to_file(dest_buffer, &curr_sst, &written_block_pointer, entrys, curr_file);
+            write_blocks_to_file(dest_buffer,compression_buffer,dict_buffer, &curr_sst, entrys, curr_file);
            
             merge_data *  max = get_last(entrys);
             if (max == NULL){
@@ -293,18 +313,14 @@ int merge_tables(byte_buffer *dest_buffer, compact_job_internal * job, arena *a,
             curr_sst.block_start=  GLOB_OPTS.SST_TABLE_SIZE;
            
             block_b_count = 2;
-          
             entrys->len = 0;
             
-
-            num_block_counter = 0;
             sst_b_count = 2;
             sst_offset_tracker = 0;
 
             generate_unique_sst_filename(curr_sst.file_name, MAX_F_N_SIZE, job->end_level);
             curr_file = fopen(curr_sst.file_name, "wb");
             if (curr_file == NULL) return FAILED_OPEN;
-            written_block_pointer =0;
             current_block = init_block(curr_sst.mem_store, &sst_offset_tracker);
         }
         if (best_entry.key!=NULL & best_entry.key->entry != NULL) {
@@ -319,15 +335,14 @@ int merge_tables(byte_buffer *dest_buffer, compact_job_internal * job, arena *a,
     }
     if (block_b_count > 0){
         complete_block(&curr_sst, &current_block, block_b_count);
-        reset_block_counters(&block_b_count, &sst_b_count, &num_block_counter);
+        reset_block_counters(&block_b_count, &sst_b_count);
     }
   
     if (entrys->len > 0) {
-            write_blocks_to_file(dest_buffer, &curr_sst, &written_block_pointer, entrys, curr_file);
+            write_blocks_to_file(dest_buffer,compression_buffer,dict_buffer, &curr_sst, entrys, curr_file);
             merge_data * max = get_last(entrys);
             memcpy(curr_sst.max, max->key->entry, max->key->len);
             process_sst(dest_buffer, &curr_sst, curr_file, job, sst_b_count);
-
     }
   
 
@@ -442,14 +457,15 @@ void compact_one_table(compact_manager * cm, compact_job_internal job,  sst_f_in
     while (cm->arena_pool->size <=0 || cm->big_buffer_pool->size <=0){
         pthread_cond_wait(&cm->resource_sig, &cm->resource_lock);
     }
-    arena * a = request_struct(cm->arena_pool);
-    reset_arena(a);
+    byte_buffer* dict_buffer = request_struct(cm->dict_buffer_pool);
     byte_buffer * dest_buffer = request_struct(cm->big_buffer_pool);
+    byte_buffer * compression_buffer=  request_struct(cm->compression_buffer_pool);
     pthread_mutex_unlock(&cm->resource_lock);
-    int result = merge_tables (dest_buffer, &job,a, cm->c);
+    int result = merge_tables (dest_buffer,compression_buffer, &job, dict_buffer, cm->c);
     if (result == INVALID_DATA){
-        return_struct(cm->arena_pool, a, &reset_arena);
         return_struct(cm->big_buffer_pool, dest_buffer, &reset_buffer);
+        return_struct(cm->dict_buffer_pool, dict_buffer, &reset_buffer);
+        return_struct(cm->compression_buffer_pool, compression_buffer, &reset_buffer);
         pthread_cond_signal(&cm->resource_sig);
         if(job.start_level == 0){
             cm->lvl0_job_running = false;
@@ -461,8 +477,9 @@ void compact_one_table(compact_manager * cm, compact_job_internal job,  sst_f_in
     free_list(ssts_to_merge, NULL);
 
     pthread_mutex_lock(&cm->resource_lock);
-    return_struct(cm->arena_pool, a, &reset_arena);
+    return_struct(cm->dict_buffer_pool, dict_buffer, &reset_buffer);
     return_struct(cm->big_buffer_pool, dest_buffer, &reset_buffer);
+    return_struct(cm->compression_buffer_pool, compression_buffer, &reset_buffer);
     pthread_cond_signal(&cm->resource_sig);
     pthread_mutex_unlock(&cm->resource_lock);
     if(job.start_level == 0){
@@ -518,8 +535,9 @@ void free_cm(compact_manager * manager){
     }
     free_pool(manager->compact_pool, &free_ci);
     free_pool(manager->arena_pool, &free_arena);
-    free_pool(manager->page_buffer_pool, &free_buffer);
+    free_pool(manager->dict_buffer_pool, &free_buffer);
     free_pool(manager->big_buffer_pool, &free_buffer);
+    free_pool(manager->compression_buffer_pool, &free_buffer);
     free_front(manager->job_queue);
     pthread_mutex_destroy(&manager->compact_lock);
     pthread_mutex_destroy(&manager->resource_lock);

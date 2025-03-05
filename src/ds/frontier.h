@@ -7,6 +7,12 @@
 #include "hashtbl.h"
 #pragma once
 
+/**
+ * @brief Priority queue implementation using a heap data structure
+ * @struct frontier
+ * @param queue Pointer to the list storing the elements
+ * @param compare Function pointer for comparing elements to maintain heap property
+ */
 typedef struct frontier{
     list* queue;
     int (*compare)(const void*, const void*); // Comparison function pointer

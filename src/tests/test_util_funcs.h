@@ -197,10 +197,11 @@ void write_random_units(byte_buffer *b, const int iters, const int prefix_size) 
         write_db_unit(b, value_unit);
     }
 }
-void read_entire_sst(byte_buffer * b, sst_f_inf * inf){
+void read_entire_sst(byte_buffer * b, byte_buffer * decompress_into, sst_f_inf * inf){
     FILE * file=  fopen(inf->file_name, "rb");
-    int read=  fread(b->buffy, 1, inf->length,file);
+    int read=  fread(b->buffy, 1, inf->compressed_len,file);
     b->curr_bytes += read;
+    regular_decompress(&inf->compr_info, b, decompress_into, read);
 }
 void add_random_records_a_z(storage_engine *l, const int size) {
    

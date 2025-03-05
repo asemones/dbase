@@ -12,36 +12,45 @@
 
 
  int read_sst_list(list * sst_files, byte_buffer * tempBuffer, size_t num_sst){
-   for (int i = 0; i < sst_files->len; i++){
-        size_t block_ind_len = 0;
-        if (i +1 ==  sst_files->cap) expand(sst_files);
-        sst_f_inf * sst = (sst_f_inf*)at(sst_files,i);
-        read_buffer(tempBuffer, sst->file_name, strlen(&tempBuffer->buffy[tempBuffer->read_pointer])+1);
-        read_buffer(tempBuffer, &sst->length, sizeof(size_t));
-        read_buffer(tempBuffer, sst->max, MIN_KEY_SIZE);
-        read_buffer(tempBuffer, sst->min, MIN_KEY_SIZE);
-        read_buffer(tempBuffer, &sst->time,sizeof(sst->time) );
-        read_buffer(tempBuffer, &sst->block_start, sizeof(size_t));
-        read_buffer(tempBuffer, &block_ind_len, sizeof(size_t));
-        sst->block_indexs = thread_safe_list(block_ind_len,sizeof(block_index),false);
-        if (sst->block_indexs == NULL){
-            return STRUCT_NOT_MADE;
-        }
-        sst->block_indexs->len = block_ind_len;
-        sst->mem_store= calloc_arena(GLOB_OPTS.BLOCK_INDEX_SIZE);
-        if(sst->mem_store == NULL){
-            return STRUCT_NOT_MADE;
-        }
-        
-    }
+    byte_buffer * dict_buffer = create_buffer(1 * 1024 * 1024);//very lazy 1 MB since dictionaries should not be larger than that
     byte_buffer * small_buff = create_buffer(30 * 1024);
-    for (int i = 0 ;i < num_sst; i++){
-        sst_f_inf * sst = (sst_f_inf*)at(sst_files,i);
-        int error_code = read_index_block(sst, small_buff);
-        if (error_code !=0) return error_code;
-
+    for (int i = 0; i < num_sst; i++){
+         size_t block_ind_len = 0;
+         sst_f_inf sst_s = create_sst_empty();
+         free_filter(sst_s.filter); /*we assign this later in read_index_block*/
+         sst_f_inf * sst = &sst_s;
+         read_buffer(tempBuffer, sst->file_name, strlen(&tempBuffer->buffy[tempBuffer->read_pointer])+1);
+         read_buffer(tempBuffer, &sst->length, sizeof(size_t));
+         read_buffer(tempBuffer, &sst->compressed_len, sizeof(size_t));
+         read_buffer(tempBuffer, &sst->use_dict_compression, sizeof(bool));
+         read_buffer(tempBuffer, &sst->compr_info.dict_offset, sizeof(sst->compr_info.dict_offset));
+         read_buffer(tempBuffer, &sst->compr_info.dict_len, sizeof(sst->compr_info.dict_len));
+         read_buffer(tempBuffer, sst->max, MIN_KEY_SIZE);
+         read_buffer(tempBuffer, sst->min, MIN_KEY_SIZE);
+         read_buffer(tempBuffer, &sst->time,sizeof(sst->time) );
+         read_buffer(tempBuffer, &sst->block_start, sizeof(size_t));
+         read_buffer(tempBuffer, &block_ind_len, sizeof(size_t));
+         sst->block_indexs = thread_safe_list(block_ind_len,sizeof(block_index),false);
+         if (sst->block_indexs == NULL){
+             return STRUCT_NOT_MADE;
+         }
+         sst->block_indexs->len = block_ind_len;
+         sst->mem_store= calloc_arena(GLOB_OPTS.BLOCK_INDEX_SIZE);
+         if(sst->mem_store == NULL){
+             return STRUCT_NOT_MADE;
+         }
+         int error_code = read_index_block(sst, small_buff);
+         if (error_code !=0) return error_code;
+         if (sst->use_dict_compression){
+            FILE * f = fopen(sst->file_name, "rb");
+            load_dicts(&sst->compr_info, GLOB_OPTS.compress_level, dict_buffer->buffy,f);
+            fclose(f);
+        }
+        insert(sst_files,&sst_s);
+         
     }
     free_buffer(small_buff);
+    free_buffer(dict_buffer);
     return 0;
 }
 int save_snap(meta_data * meta){
@@ -106,15 +115,14 @@ meta_data * load_meta_data(char * file, char * bloom_file){
     read_buffer(tempBuffer, lengths, sizeof(int)*MAX_LEVELS);
     for (int i = 0; i < MAX_LEVELS; i++){
          if (lengths[i] <=0){
-            meta->sst_files[i] = thread_safe_list(512,sizeof(sst_f_inf),false);
+            meta->sst_files[i] = thread_safe_list(16,sizeof(sst_f_inf),false);
             if (meta->sst_files[i] == NULL){
                 return NULL;
             }
             continue;
         }
-        meta->sst_files[i] = thread_safe_list(512,sizeof(sst_f_inf),false);
-        meta->sst_files[i]->len = lengths[i];
-        int ret = read_sst_list(meta->sst_files[i], tempBuffer, meta->num_sst_file);
+        meta->sst_files[i] = thread_safe_list(16,sizeof(sst_f_inf),false);
+        int ret = read_sst_list(meta->sst_files[i], tempBuffer,  lengths[i]);
         if (ret !=OK) {
             meta->err_code = ret;
         }
@@ -128,21 +136,26 @@ meta_data * load_meta_data(char * file, char * bloom_file){
     return meta;
 }
  void dump_sst_list(list * sst_files, FILE * f){
-    for (int i = 0; i < sst_files->len; i++){
-        sst_f_inf * sst = at(sst_files,i);
-        fwrite(sst->file_name, 1,strlen(sst->file_name)+1,f);
-        fwrite(&sst->length, 1,sizeof(size_t),f);
-        fwrite(sst->max, 1, MIN_KEY_SIZE, f);
-        fwrite(sst->min, 1, MIN_KEY_SIZE, f);
-        fwrite(&sst->time, 1, sizeof(sst->time), f);
-        if (sst->block_indexs == NULL) continue;
-        fwrite(&sst->block_start, 1, sizeof(size_t), f);
-        size_t temp = sst->block_indexs->len;
-        fwrite(&temp, 1, sizeof(size_t), f);
-        free_sst_inf(sst);
-        sst = NULL;
-    }
-}
+     for (int i = 0; i < sst_files->len; i++){
+         sst_f_inf * sst = at(sst_files,i);
+         fwrite(sst->file_name, 1,strlen(sst->file_name)+1,f);
+         fwrite(&sst->length, 1,sizeof(size_t),f);
+         fwrite(&sst->compressed_len, 1,sizeof(size_t),f);
+         fwrite(&sst->use_dict_compression, 1,sizeof(bool),f);
+         fwrite(&sst->compr_info.dict_offset, 1,sizeof(sst->compr_info.dict_offset), f);
+         fwrite(&sst->compr_info.dict_len,1,sizeof(sst->compr_info.dict_len),f);
+         fwrite(sst->max, 1, MIN_KEY_SIZE, f);
+         fwrite(sst->min, 1, MIN_KEY_SIZE, f);
+         fwrite(&sst->time, 1, sizeof(sst->time), f);
+         if (sst->block_indexs == NULL) continue;
+         fwrite(&sst->block_start, 1, sizeof(size_t), f);
+         size_t temp = sst->block_indexs->len;
+         fwrite(&temp, 1, sizeof(size_t), f);
+         // Don't free the SST files here, they will be freed in free_md
+         // free_sst_inf(sst);
+         // sst = NULL;
+     }
+ }
  void write_md_d(char * file, meta_data * meta, byte_buffer * temp_buffer){
        FILE * f = fopen(file, "wb");
        meta->shutdown_status = 0;

@@ -1,6 +1,6 @@
 #include "cache.h"
 #define OVER_FLOW_EXTRA 100
-
+#define NUM_COMPRESSION_BUF 20
 static cache_entry* create_cache_entry(size_t page_size, size_t num_keys, arena *a) {
     cache_entry *entry = (cache_entry*)arena_alloc(a, sizeof(*entry));
     entry->buf = create_buffer(page_size + OVER_FLOW_EXTRA);
@@ -29,6 +29,10 @@ cache create_cache(size_t capacity, size_t page_size) {
     for (size_t i = 0; i < c.max_pages; i++) {
         c.frames[i]   = create_cache_entry(page_size, page_size / 16, c.mem);
         c.ref_bits[i] = 0;
+    }
+    c.compression_buffers = create_pool(NUM_COMPRESSION_BUF);
+    for (int i = 0; i < NUM_COMPRESSION_BUF; i++){
+        insert_struct(c.compression_buffers, create_buffer(page_size));
     }
     pthread_mutex_init(&c.c_lock, NULL);
     return c;
@@ -72,7 +76,7 @@ cache_entry* get_page(cache *c, const char *uuid) {
     return entry;
 }
 
-cache_entry* retrieve_entry(cache *c, block_index *index, const char *file_name) {
+cache_entry* retrieve_entry(cache *c, block_index *index, const char *file_name, sst_f_inf *sst) {
     void *val = get_v(c->map, index->uuid);
     if (val) {
         size_t idx = (size_t)(uintptr_t)val;
@@ -92,10 +96,20 @@ cache_entry* retrieve_entry(cache *c, block_index *index, const char *file_name)
     }
     pthread_mutex_lock(&c->c_lock);
     size_t idx = get_free_frame(c);
+    byte_buffer * compression_buf = request_struct(c->compression_buffers);
     pthread_mutex_unlock(&c->c_lock);
     cache_entry *ce = c->frames[idx];
     byte_buffer *buffer = ce->buf;
-    buffer->curr_bytes = read_wrapper(buffer->buffy, 1, index->len, sst_file);
+    if (sst->compressed_len > 0 ){
+        compression_buf->curr_bytes = read_wrapper(compression_buf->buffy, 1, index->len, sst_file);
+    }
+    else{
+        buffer->curr_bytes = read_wrapper(compression_buf->buffy, 1, index->len, sst_file);
+    }
+    if (GLOB_OPTS.compress_level > -5){
+        handle_decompression(sst, compression_buf, buffer);
+    }    
+    /*read COMPRESSED LENGTH*/
 
     int uuid_len = (int)strlen(index->uuid) + 1;
     if (uuid_len <= (int)buffer->max_bytes) {
@@ -107,11 +121,12 @@ cache_entry* retrieve_entry(cache *c, block_index *index, const char *file_name)
     }
     pthread_mutex_lock(&c->c_lock);
     c->ref_bits[idx] = 1;
+    return_struct(c->compression_buffers, compression_buf, &reset_buffer);
     if (buffer->utility_ptr) {
         add_kv(c->map, buffer->utility_ptr, (void*)(uintptr_t)idx);
     }
     /*race condition, c->frames[idx] gets overwritten*/
-    if (!verify_data((uint8_t*)buffer->buffy, index->len, index->checksum)) {
+    if (!verify_data((uint8_t*)buffer->buffy, buffer->curr_bytes, index->checksum)) {
         remove_kv(c->map, buffer->utility_ptr);
         fprintf(stderr, "invalid data\n");
         fprintf(stderr, "block offset %ld filename %s cache size %d\n", index->offset, file_name, c->filled_pages);

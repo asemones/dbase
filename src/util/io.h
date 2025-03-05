@@ -24,13 +24,48 @@ event_loop* create_loop(size_t size);
 //int add(eventLoop* loop, int fd, short filter, aioCallback* callback, void* userdata);
 void run_loop(event_loop * loop);
 */
+/**
+ * @brief Wrapper function for fwrite
+ * @param ptr Pointer to the data to be written
+ * @param size Size of each element to be written
+ * @param n Number of elements to be written
+ * @param file Pointer to the FILE object
+ * @return Number of elements successfully written
+ */
 static inline int write_wrapper(void * ptr, size_t size, size_t n, FILE * file ){
     return fwrite(ptr, size, n, file);
 }
+/**
+ * @brief Wrapper function for fread
+ * @param ptr Pointer to the buffer where read data will be stored
+ * @param size Size of each element to be read
+ * @param n Number of elements to be read
+ * @param file Pointer to the FILE object
+ * @return Number of elements successfully read
+ */
 static inline int read_wrapper(void  * ptr, size_t size, size_t n, FILE * file ){
     return fread(ptr, size, n, file);
 }
+/**
+ * @brief Writes data to a file
+ * @param buf Pointer to the buffer containing data to be written
+ * @param file Path to the file
+ * @param mode File opening mode
+ * @param bytes Size of each element to be written
+ * @param element Number of elements to be written
+ * @return Number of elements successfully written or -1 on error
+ */
 static inline int write_file(char * buf, char * file, char * mode, size_t bytes, size_t element);
+
+/**
+ * @brief Reads data from a file
+ * @param buf Pointer to the buffer where read data will be stored
+ * @param file Path to the file
+ * @param mode File opening mode
+ * @param bytes Size of each element to be read
+ * @param element Number of elements to be read (if 0, reads entire file)
+ * @return Number of elements successfully read or -1 on error
+ */
 static inline int read_file( char * buf, char * file, char * mode, size_t bytes, size_t element);
 
 static inline int read_file( char * buf, char * file, char * mode, size_t bytes, size_t element)
@@ -60,6 +95,11 @@ static inline int write_file(char * buf, char * file, char * mode, size_t bytes,
     fclose(File);
     return written_size;
 }
+/**
+ * @brief Gets the size of a file
+ * @param file Pointer to the FILE object
+ * @return Size of the file in bytes
+ */
 static inline long get_file_size(FILE *file) {
     long size;
     

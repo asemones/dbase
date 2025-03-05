@@ -19,7 +19,7 @@ thread_p * thrd;
 
 void prep_test(){
     engine = create_engine(GLOB_OPTS.META_F_N, GLOB_OPTS.BLOOM_F_N);
-    cm = init_cm(engine->meta, engine->cach);
+    cm = init_cm(engine->meta, &engine->cach);
     engine->cm_ref = &cm->check_meta_cond;
     cm->wait = engine->compactor_wait;
     cm->wait_mtx = engine->compactor_wait_mtx;
@@ -33,10 +33,10 @@ void end_test(){
     sleep(10);
     shutdown_cm(cm);
     destroy_pool(thrd);
-    remove_ssts(cm->sst_files);
+    remove_ssts(cm->sst_files);/*this wont remove the last sst if it gets dumped to disk during free_cm, so its fine if theres ONE spare */
     sleep(10);
-    free_cm(cm);
     free_engine(engine, GLOB_OPTS.META_F_N, GLOB_OPTS.BLOOM_F_N);
+    free_cm(cm);
     remove(GLOB_OPTS.META_F_N);
     remove(GLOB_OPTS.BLOOM_F_N);
     remove ("WAL_0.bin");

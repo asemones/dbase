@@ -32,8 +32,8 @@ void create_a_babybase(void) {
             sprintf(key, "hello%d", i);
             sprintf(value, "world%d", i);
         }
-        k[i].len = strlen(key)+1;
-        v[i].len = strlen(value)+1;
+        k[i].len = strlen(key);
+        v[i].len = strlen(value);
 
         write_record(l, k[i],v[i]);
     }
@@ -59,8 +59,8 @@ void create_a_babybase(void) {
             sprintf(value, "value%d", i);
         }
 
-        k[i].len = strlen(key)+1;
-        v[i].len = strlen(value)+1;
+        k[i].len = strlen(key);
+        v[i].len = strlen(value);
         write_record(l, k[i],v[i]); 
     }
     lock_table(l);
@@ -91,18 +91,10 @@ void create_a_bigbase(storage_engine * l) {
             sprintf(key, "hello%d", i);
             sprintf(value, "world%d", i);
         }
-        k[i].len = strlen(key)+1;
-        v[i].len = strlen(value)+1;
+        k[i].len = strlen(key);
+        v[i].len = strlen(value);
 
         write_record(l, k[i],v[i]);
-    }
-
-    
-
-   
-    for (int i = 0; i < size; i++) {
-        free(k[i].entry);
-        free(v[i].entry);
     }
     for (int i = 0; i < size; i++) {
         char *key = (char*)wrapper_alloc(30, NULL, NULL);
@@ -117,21 +109,15 @@ void create_a_bigbase(storage_engine * l) {
             sprintf(value, "value%d", i);
         }
 
-        k[i].len = strlen(key)+1;
-        v[i].len = strlen(value)+1;
+        k[i].len = strlen(key);
+        v[i].len = strlen(value);
         write_record(l, k[i],v[i]); 
-    }
-
-    // Free allocated memory for the second table
-    for (int i = 0; i < size; i++) {
-         free(k[i].entry);
-         free(v[i].entry);
     }
 }
 storage_engine * create_messy_db(){
     create_a_babybase();
     storage_engine * l = create_engine("meta.bin", "bloom.bin");
-    compact_manager* cm = init_cm(l->meta, l->cach);
+    compact_manager* cm = init_cm(l->meta, &l->cach);
     sst_f_inf * victim = at(cm->sst_files[0], 0);
     for (int i = 6000; i < 9000; i++) {
         char *key = (char*)wrapper_alloc(60, NULL, NULL);
@@ -152,8 +138,8 @@ storage_engine * create_messy_db(){
             sprintf(key, "key%d", i);
             sprintf(value, "value%d", i);
         }
-        k.len = strlen(k.entry) + 1;
-        v.len= strlen(v.entry)+1;
+        k.len = strlen(k.entry);
+        v.len= strlen(v.entry);
         write_record(l, k,v);
     }
     return l;
@@ -211,10 +197,11 @@ void write_random_units(byte_buffer *b, const int iters, const int prefix_size) 
         write_db_unit(b, value_unit);
     }
 }
-void read_entire_sst(byte_buffer * b, sst_f_inf * inf){
+void read_entire_sst(byte_buffer * b, byte_buffer * decompress_into, sst_f_inf * inf){
     FILE * file=  fopen(inf->file_name, "rb");
-    int read=  fread(b->buffy, inf->length,1, file);
+    int read=  fread(b->buffy, 1, inf->compressed_len,file);
     b->curr_bytes += read;
+    regular_decompress(&inf->compr_info, b, decompress_into, read);
 }
 void add_random_records_a_z(storage_engine *l, const int size) {
    
@@ -238,8 +225,8 @@ void add_random_records_a_z(storage_engine *l, const int size) {
         sprintf(key, "%s_key_%d", prefix, i);
         sprintf(value, "first_value%d", i);
 
-        k[i].len = strlen(key) + 1;
-        v[i].len = strlen(value) + 1;
+        k[i].len = strlen(key);
+        v[i].len = strlen(value);
 
         write_record(l, k[i], v[i]);
     }
@@ -265,8 +252,8 @@ void add_random_records_a_z(storage_engine *l, const int size) {
         sprintf(key, "%s_key_%d", prefix, i);
         sprintf(value, "second_value%d", i);
 
-        k[i].len = strlen(key) + 1;
-        v[i].len = strlen(value) + 1;
+        k[i].len = strlen(key);
+        v[i].len = strlen(value);
 
         write_record(l, k[i], v[i]);
     }

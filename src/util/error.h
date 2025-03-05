@@ -6,27 +6,29 @@
 #pragma once
 
 
+/**
+ * @brief Enumeration of error codes used throughout the database system
+ * @enum error_codes
+ */
 typedef enum error_codes{
-    OK,   
-    INVALID_DATA,
-    INVALID_META_DATA,
-    INVALID_BLOCK,
-    INVALID_WAL_FILE,
-    CRITICAL_MALLOC_FAILURE, //requires immediate shutdown or unrecoverable
-    NON_CRITICAL_MALLOC_FAILURE, //can be handled
-    FAILED_BUFFER_WRITE,
-    SST_F_INVALID,
-    FAILED_OPEN,
-    FAILED_SEEK,
-    FAILED_READ,
-    FALED_WRITE,
-    FAILED_ARENA,
-    STRUCT_NOT_MADE,
-    FAILED_TRANSCATION,
-    PROTECTED_RESOURCE,
-    UNKNOWN_ERROR
-    
-
+    OK,                           /**< Operation completed successfully */
+    INVALID_DATA,                 /**< Data is invalid or corrupted */
+    INVALID_META_DATA,            /**< Metadata is invalid or corrupted */
+    INVALID_BLOCK,                /**< Block structure is invalid */
+    INVALID_WAL_FILE,             /**< Write-ahead log file is invalid */
+    CRITICAL_MALLOC_FAILURE,      /**< Memory allocation failure requiring immediate shutdown */
+    NON_CRITICAL_MALLOC_FAILURE,  /**< Memory allocation failure that can be handled */
+    FAILED_BUFFER_WRITE,          /**< Failed to write to a buffer */
+    SST_F_INVALID,                /**< SST file is invalid */
+    FAILED_OPEN,                  /**< Failed to open a file */
+    FAILED_SEEK,                  /**< Failed to seek in a file */
+    FAILED_READ,                  /**< Failed to read from a file */
+    FALED_WRITE,                  /**< Failed to write to a file */
+    FAILED_ARENA,                 /**< Failed arena operation */
+    STRUCT_NOT_MADE,              /**< Failed to create a structure */
+    FAILED_TRANSCATION,           /**< Failed transaction */
+    PROTECTED_RESOURCE,           /**< Attempted to access a protected resource */
+    UNKNOWN_ERROR                 /**< Unknown or unspecified error */
 }error_codes;
 
 
@@ -35,9 +37,20 @@ typedef enum error_codes{
 /*error codes ordered by recency in the call stack*/
 /*Each "worker" gets an error call stsck*/
 /*To finish error codes, concurrency needs to be done. Revist */
+/**
+ * @brief Converts an error code to its corresponding string representation
+ * @param error The error code to convert
+ * @return String representation of the error code
+ */
 static inline const char * get_error_string(error_codes error);
 
 
+/**
+ * @brief Creates a formatted error message from a list of error codes
+ * @param error_codes Array of error codes, ordered by recency in the call stack
+ * @param num_codes Number of error codes in the array
+ * @param buf Buffer to store the formatted error message
+ */
 static inline void create_error_message(int* error_codes, int num_codes, char* buf) {
     if (num_codes <= 0 || buf == NULL) {
         return;

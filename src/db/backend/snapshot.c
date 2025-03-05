@@ -9,7 +9,7 @@ snapshot * create_snap(){
     s->cache_ref = NULL;
     return s;
 }
-int init_snapshot(snapshot * master, snapshot * s, cache * c){
+int init_snapshot(snapshot * master, snapshot * s, shard_controller*c){
     pthread_mutex_init(&s->counter_lock, NULL);
     for (int i =0; i < LEVELS; i++){
         s->sst_files[i]= thread_safe_list(0, sizeof (sst_f_inf), false);

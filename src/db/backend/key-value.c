@@ -9,11 +9,9 @@ int write_db_unit(byte_buffer * b, db_unit u){
     write_buffer(b,(char*)u.entry, u.len );
     return sizeof(u.len) + u.len;
 }
-db_unit read_db_unit(byte_buffer * b){
-    db_unit u;
-    read_buffer(b, (char*)&u.len, sizeof(u.len));
-    read_buffer(b,(char*)u.entry, u.len);
-    return u;
+void read_db_unit(byte_buffer * b, db_unit  *u){
+    read_buffer(b, (char*)&u->len, sizeof(u->len));
+    read_buffer(b,(char*)u->entry, u->len);
 }
 size_t load_block_into_into_ds(byte_buffer *stream, void *ds, void (*func)(void *, void *, void *)) {
     size_t num_bytes = 0;  

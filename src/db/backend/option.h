@@ -4,6 +4,31 @@
 #include <stdbool.h>
 #pragma  once
 
+/**
+ * @brief Configuration options for the database
+ * @struct option
+ * @param SST_TABLE_SIZE Size of SST tables in bytes
+ * @param MEM_TABLE_SIZE Size of memory tables in bytes
+ * @param BLOCK_INDEX_SIZE Size of block indices in bytes
+ * @param LEVEL_0_SIZE Size of level 0 in bytes
+ * @param LEVEL_SCALAR Scaling factor for level sizes
+ * @param NUM_COMPACTOR_UNITS Number of compaction units
+ * @param READ_WORKERS Number of read worker threads
+ * @param WRITE_WORKERS Number of write worker threads
+ * @param LRU_CACHE_SIZE Size of LRU cache in bytes
+ * @param WAL_BUFFERING_SIZE Size of WAL buffer in bytes
+ * @param SST_TABLE_SIZE_SCALAR Scaling factor for SST table size
+ * @param WAL Flag to enable/disable Write-Ahead Logging
+ * @param WAL_SIZE Size of WAL in bytes
+ * @param WAL_M_F_N WAL metadata file name
+ * @param META_F_N Metadata file name
+ * @param BLOOM_F_N Bloom filter file name
+ * @param MAX_WAL_FILES Maximum number of WAL files
+ * @param NUM_FILES_COMPACT_ZER0 Number of files to compact at level 0
+ * @param dict_size_ratio Ratio of file size to dictionary size for compression
+ * @param compress_level Compression level. set this to less than -5 to disable compression completely
+ * @param num_cache Number of cache shards
+ */
 typedef struct option{
     size_t SST_TABLE_SIZE;
     size_t MEM_TABLE_SIZE;
@@ -15,7 +40,6 @@ typedef struct option{
     size_t WRITE_WORKERS;
     size_t LRU_CACHE_SIZE;
     size_t WAL_BUFFERING_SIZE;
-    int COMPACTOR_WRITE_SIZE;//the number of blocks to write at once
     double SST_TABLE_SIZE_SCALAR;
     bool WAL;
     size_t WAL_SIZE;
@@ -26,9 +50,18 @@ typedef struct option{
     size_t NUM_FILES_COMPACT_ZER0;
     int dict_size_ratio; /*sets the ratio of file size to dict size, will determine real dictionary size. set to 0 for no dict */
     int compress_level;
+    int num_cache;
 }option;
 
+/**
+ * @brief Global options instance
+ */
 extern option GLOB_OPTS;
+
+/**
+ * @brief Sets default configuration options for production use
+ * @param opt Pointer to the options structure to initialize
+ */
 static inline void set_defaults(option * opt){
     opt->SST_TABLE_SIZE = 64 * 1024 * 1024;
     opt->MEM_TABLE_SIZE = 64 * 1024 * 1024;
@@ -43,12 +76,13 @@ static inline void set_defaults(option * opt){
     opt->LRU_CACHE_SIZE = 32 * 1024 * 1024;
     opt->WAL =true;
     opt->WAL_M_F_N = "WAL_M.bin";
-    opt->COMPACTOR_WRITE_SIZE =10;
     opt->MAX_WAL_FILES = 5;
     opt->WAL_SIZE = opt->MEM_TABLE_SIZE;
     opt->META_F_N = "meta.bin";
     opt->BLOOM_F_N = "bloom.bin";
     opt->NUM_FILES_COMPACT_ZER0 = 5;
+    opt->num_cache = 128;
+
 }
 static inline void set_debug_defaults(option * opt){
     opt->SST_TABLE_SIZE =  256* 1024;
@@ -66,12 +100,12 @@ static inline void set_debug_defaults(option * opt){
     opt->WAL_M_F_N = "WAL_M.bin";
     opt->META_F_N = "meta.bin";
     opt->BLOOM_F_N = "bloom.bin";
-    opt->COMPACTOR_WRITE_SIZE = 2;
     opt->MAX_WAL_FILES = 2;
     opt->WAL_SIZE = opt->MEM_TABLE_SIZE;
     opt->NUM_FILES_COMPACT_ZER0 = 2;
-    opt->dict_size_ratio = 0;
+    opt->dict_size_ratio = 100;
     opt->compress_level =1;
+    opt->num_cache = 8;
 
 }
 

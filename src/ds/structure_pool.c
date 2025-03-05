@@ -1,4 +1,5 @@
 #include "structure_pool.h"
+
 struct_pool * create_pool(size_t capacity){
     struct_pool * pool = (struct_pool*)wrapper_alloc((sizeof(struct_pool)), NULL,NULL);
     if (pool == NULL) return NULL;

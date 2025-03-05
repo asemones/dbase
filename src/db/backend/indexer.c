@@ -17,11 +17,10 @@ sst_f_inf create_sst_empty(){
     file.filter = bloom(NUM_HASH_SST,2000, false, NULL);
     file.marked = false;
     file.in_cm_job = false;
-    file.compression_dict = NULL;
-    file.decompr_context = ZSTD_createDCtx();
-    file.compr_context = ZSTD_createCCtx();
-    file.dict_buffer = NULL;
+    file.use_dict_compression = false; 
+    init_sst_compr_inf(&file.compr_info, NULL);
     gettimeofday(&file.time, NULL);
+    file.compressed_len = 0;
     return file;
 
 }
@@ -34,10 +33,9 @@ sst_f_inf create_sst_filter(bloom_filter * b){
     file.filter = b;
     file.marked = false;
     file.in_cm_job = false;
-    file.compression_dict = NULL;
-    file.decompr_context = ZSTD_createDCtx();
-    file.compr_context = ZSTD_createCCtx();
-    file.dict_buffer = NULL;
+    file.use_dict_compression = false; 
+    init_sst_compr_inf(&file.compr_info, NULL);
+    file.compressed_len = 0;
     gettimeofday(&file.time, NULL);
     return file;
 
@@ -70,6 +68,12 @@ int sst_deep_copy(sst_f_inf * master, sst_f_inf * copy){
     }
     copy->marked = master->marked;
     copy->in_cm_job = master->in_cm_job;
+    copy->use_dict_compression = master->use_dict_compression;
+    copy->compressed_len = master->compressed_len;
+    
+    // Initialize compression info
+    init_sst_compr_inf(&copy->compr_info, NULL);
+    
     return 0;
 }
 block_index * create_block_index(size_t est_num_keys){
@@ -147,6 +151,7 @@ int read_index_block(sst_f_inf * file, byte_buffer * stream)
             return STRUCT_NOT_MADE;
         }
     }
+    /*why the fuck is this here???? spent two hours looking for it*/
     file->filter = from_stream(stream);
     if (file->filter == NULL){
         return STRUCT_NOT_MADE;
@@ -247,11 +252,8 @@ void free_sst_inf(void * ss){
     sst->block_indexs = NULL;
     sst->mem_store = NULL;
     free_bit(sst->filter->ba);
+    free_sst_cmpr_inf(&sst->compr_info);
     sst->filter = NULL;
-    ZSTD_freeCCtx(sst->compr_context);
-    ZSTD_freeDCtx(sst->decompr_context);
-    ZSTD_freeCDict(sst->compression_dict);
-    if (sst->dict_buffer!= NULL) free(sst->dict_buffer);
     sst = NULL;
 
     //free(sst);

@@ -1,15 +1,16 @@
 #include "cache.h"
 #define OVER_FLOW_EXTRA 100
 #define NUM_COMPRESSION_BUF 20
-static cache_entry* create_cache_entry(size_t page_size, size_t num_keys, arena *a) {
-    cache_entry *entry = (cache_entry*)arena_alloc(a, sizeof(*entry));
-    entry->buf = create_buffer(page_size + OVER_FLOW_EXTRA);
-    entry->ar  = (k_v_arr*)arena_alloc(a, sizeof(k_v_arr));
-    entry->ar->keys   = arena_alloc(a, num_keys * sizeof(db_unit));
-    entry->ar->values = arena_alloc(a, num_keys * sizeof(db_unit));
-    entry->ar->cap    = num_keys;
-    entry->ar->len    = 0;
-    entry->ref_count  = 0;
+cache_entry empty;
+static cache_entry create_cache_entry(size_t page_size, size_t num_keys, arena *a) {
+    cache_entry entry;
+    entry.buf = create_buffer(page_size + OVER_FLOW_EXTRA);
+    entry.ar  = (k_v_arr*)arena_alloc(a, sizeof(k_v_arr));
+    entry.ar->keys   = arena_alloc(a, num_keys * sizeof(db_unit));
+    entry.ar->values = arena_alloc(a, num_keys * sizeof(db_unit));
+    entry.ar->cap    = num_keys;
+    entry.ar->len    = 0;
+    entry.ref_count  = 0;
     return entry;
 }
 
@@ -22,7 +23,7 @@ cache create_cache(size_t capacity, size_t page_size) {
     c.mem          = calloc_arena(capacity * 2);
     c.max_pages = capacity / (page_size + sizeof(byte_buffer) + sizeof(cache_entry)
                   + OVER_FLOW_EXTRA + (sizeof(db_unit)) * 2);
-    c.frames     = (cache_entry**)malloc(sizeof(cache_entry*) * c.max_pages);
+    c.frames     = (cache_entry*)malloc(sizeof(cache_entry) * c.max_pages);
     c.ref_bits   = (uint8_t*)calloc(c.max_pages, sizeof(uint8_t));
     c.clock_hand = 0;
 
@@ -41,12 +42,12 @@ cache create_cache(size_t capacity, size_t page_size) {
 size_t clock_evict(cache *c) {
     while (1) {
         size_t idx = c->clock_hand;
-        if (c->ref_bits[idx] == 0 && c->frames[idx]->ref_count == 0) {
-            if (c->frames[idx]->buf->utility_ptr) {
-                remove_kv(c->map, c->frames[idx]->buf->utility_ptr);
+        if (c->ref_bits[idx] == 0 && c->frames[idx].ref_count == 0) {
+            if (c->frames[idx].buf->utility_ptr) {
+                remove_kv(c->map, c->frames[idx].buf->utility_ptr);
             }
-            reset_buffer(c->frames[idx]->buf);
-            c->frames[idx]->ar->len = 0;
+            reset_buffer(c->frames[idx].buf);
+            c->frames[idx].ar->len = 0;
             c->clock_hand = (c->clock_hand + 1) % c->max_pages;
             return idx;
         } else {
@@ -62,44 +63,31 @@ static size_t get_free_frame(cache *c) {
     }
     return clock_evict(c);
 }
-cache_entry* get_page(cache *c, const char *uuid) {
-    pthread_mutex_lock(&c->c_lock);
-    void *val = get_v(c->map, uuid);
-    if (!val) {
-        pthread_mutex_unlock(&c->c_lock);
-        return NULL;
-    }
-    size_t idx = (size_t)(uintptr_t)val;
-    c->ref_bits[idx] = 1;
-    cache_entry *entry = c->frames[idx];
-    pthread_mutex_unlock(&c->c_lock);
-    return entry;
-}
-
-cache_entry* retrieve_entry(cache *c, block_index *index, const char *file_name, sst_f_inf *sst) {
+cache_entry retrieve_entry(cache *c, block_index *index, const char *file_name, sst_f_inf *sst) {
     void *val = get_v(c->map, index->uuid);
+    empty.buf = NULL;
     if (val) {
         size_t idx = (size_t)(uintptr_t)val;
         pthread_mutex_lock(&c->c_lock);
         c->ref_bits[idx] = 1;
         pthread_mutex_unlock(&c->c_lock);
-        cache_entry *ce = c->frames[idx];
+        cache_entry ce = c->frames[idx];
         return ce;
     }
     FILE *sst_file = fopen(file_name, "rb");
     if (!sst_file) {
-        return NULL;
+        return empty;
     }
     if (fseek(sst_file, index->offset, SEEK_SET) < 0) {
         fclose(sst_file);
-        return NULL;
+        return empty;
     }
     pthread_mutex_lock(&c->c_lock);
     size_t idx = get_free_frame(c);
     byte_buffer * compression_buf = request_struct(c->compression_buffers);
     pthread_mutex_unlock(&c->c_lock);
-    cache_entry *ce = c->frames[idx];
-    byte_buffer *buffer = ce->buf;
+    cache_entry ce = c->frames[idx];
+    byte_buffer *buffer = ce.buf;
     if (sst->compressed_len > 0 ){
         compression_buf->curr_bytes = read_wrapper(compression_buf->buffy, 1, index->len, sst_file);
     }
@@ -137,10 +125,10 @@ cache_entry* retrieve_entry(cache *c, block_index *index, const char *file_name,
         computed_checksum, index->checksum, computed_checksum == index->checksum);
         fclose(sst_file);
         pthread_mutex_unlock(&c->c_lock);
-        return NULL;
+        return empty;
     }
     pthread_mutex_unlock(&c->c_lock);
-    load_block_into_into_ds(buffer, ce->ar, &into_array);
+    load_block_into_into_ds(buffer, ce.ar, &into_array);
     fclose(sst_file);
     return ce;
 }
@@ -161,7 +149,7 @@ void free_entry(void *entry) {
 void free_cache(cache *c) {
     if (!c) return;
     for (size_t i = 0; i < c->max_pages; i++) {
-        free_entry(c->frames[i]);
+        free_entry(&c->frames[i]);
     }
     free(c->frames);
     free(c->ref_bits);

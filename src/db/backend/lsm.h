@@ -21,11 +21,9 @@
 #ifndef LSM_H
 #define LSM_H
 
-#define MEMTABLE_SIZE 80000
 #define TOMB_STONE "-"
 #define NUM_HASH 7
 #define LOCKED_TABLE_LIST_LENGTH 2
-#define CURRENT_TABLE 0
 #define PREV_TABLE 1
 #define READER_BUFFS 10
 #define WRITER_BUFFS 10
@@ -79,7 +77,7 @@ typedef struct mem_table{
  * @param error_code Error code for the storage engine.
  */
 typedef struct storage_engine{
-    mem_table * table[LOCKED_TABLE_LIST_LENGTH];
+    list * tables;
     meta_data * meta;
     size_t num_table;
     struct_pool * write_pool;
@@ -89,6 +87,7 @@ typedef struct storage_engine{
     pthread_mutex_t * compactor_wait_mtx;
     bool * cm_ref;
     int error_code;
+    int current_table;
 }storage_engine;
 
 /**
@@ -197,13 +196,13 @@ void seralize_table(SkipList * list, byte_buffer * buffer, sst_f_inf * s);
  * @param engine A pointer to the storage engine.
  * @return An integer indicating success (0) or failure (non-zero).
  */
-int flush_table(storage_engine * engine);
+int flush_table(mem_table * table, storage_engine * engine);
 
 /**
  * @brief Frees the memory allocated for a single memory table.
  * @param table A pointer to the memory table to free.
  */
-void free_one_table(mem_table * table);
+void free_one_table(void* table);
 
 /**
  * @brief Dumps the contents of the memory tables to disk.
@@ -212,18 +211,14 @@ void free_one_table(mem_table * table);
 void dump_tables(storage_engine * engine);
 
 /**
- * @brief Frees the memory allocated for all memory tables.
- * @param engine A pointer to the storage engine.
- */
-void free_tables(storage_engine * engine);
-
-/**
  * @brief Frees the memory allocated for the storage engine.
  * @param engine A pointer to the storage engine.
  * @param meta_file The path to the metadata file.
  * @param bloom_file The path to the bloom filter file.
  */
 void free_engine(storage_engine * engine, char * meta_file, char * bloom_file);
+
+int flush_all_tables(storage_engine * engine, int flush);
 
 #endif
 

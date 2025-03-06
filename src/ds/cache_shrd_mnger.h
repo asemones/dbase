@@ -30,7 +30,7 @@ shard_controller create_shard_controller(int num_caches, int shrd_cap,  int pg_s
  * @param sst Pointer to the SST file info containing compression info.
  * @return Pointer to the retrieved cache entry, or NULL if not found.
  */
-cache_entry * retrieve_entry_sharded(shard_controller controller, block_index * ind,  const char * f_n, sst_f_inf * sst);
+cache_entry retrieve_entry_sharded(shard_controller controller, block_index * ind,  const char * f_n, sst_f_inf * sst);
 
 /**
  * @brief Frees the memory allocated for the shard controller.

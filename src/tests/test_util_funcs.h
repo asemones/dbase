@@ -36,12 +36,7 @@ void create_a_babybase(void) {
         v[i].len = strlen(value);
 
         write_record(l, k[i],v[i]);
-    }
-
-    lock_table(l);
-    flush_table(l);
-
-   
+    }  
     for (int i = 0; i < size; i++) {
         free(k[i].entry);
         free(v[i].entry);
@@ -63,9 +58,6 @@ void create_a_babybase(void) {
         v[i].len = strlen(value);
         write_record(l, k[i],v[i]); 
     }
-    lock_table(l);
-    flush_table(l);
-
     // Free allocated memory for the second table
     for (int i = 0; i < size; i++) {
          free(k[i].entry);
@@ -231,14 +223,6 @@ void add_random_records_a_z(storage_engine *l, const int size) {
         write_record(l, k[i], v[i]);
     }
 
-    lock_table(l);
-    flush_table(l);
-
-    for (int i = 0; i < size; i++) {
-        free(k[i].entry);
-        free(v[i].entry);
-    }
-
     for (int i = 0; i < size; i++) {
         char *key = (char*)wrapper_alloc(30, NULL, NULL);
         char *value = (char*)wrapper_alloc(30, NULL, NULL);
@@ -256,17 +240,7 @@ void add_random_records_a_z(storage_engine *l, const int size) {
         v[i].len = strlen(value);
 
         write_record(l, k[i], v[i]);
-    }
-
-    lock_table(l);
-    flush_table(l);  
-    
-    for (int i = 0; i < size; i++) {
-         free(k[i].entry);
-         free(v[i].entry);
-    }
-    free(k);
-    free(v);
+    } 
 }
 void remove_ssts(list ** sst2){
     for(int j = 0; j < LEVELS; j++){

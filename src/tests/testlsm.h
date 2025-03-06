@@ -8,7 +8,6 @@ void test_create_engine(void) {
     storage_engine *l = create_engine("meta.bin", "bloom.bin");
     TEST_ASSERT_NOT_NULL(l);
     TEST_ASSERT_NOT_NULL(l->meta);
-    TEST_ASSERT_NOT_NULL(l->table[0]);
     free_engine(l, "meta.bin", "bloom.bin");
     remove("meta.bin");
     remove("bloom.bin");

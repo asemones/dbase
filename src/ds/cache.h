@@ -50,7 +50,7 @@ typedef struct cache {
     dict   *map;
     arena  *mem;
     pthread_mutex_t c_lock;
-    cache_entry **frames;
+    cache_entry *frames;
     uint8_t *ref_bits;
     size_t  clock_hand;
     struct_pool * compression_buffers;
@@ -63,15 +63,6 @@ typedef struct cache {
  * @return Initialized cache structure
  */
 cache create_cache(size_t capacity, size_t page_size);
-
-/**
- * @brief Retrieves a page from the cache by its UUID
- * @param c Pointer to the cache
- * @param uuid Unique identifier for the page
- * @return Pointer to the cache entry if found, NULL otherwise
- */
-cache_entry* get_page(cache *c, const char *uuid);
-
 /**
  * @brief Retrieves or loads a cache entry for a block index
  * @param c Pointer to the cache
@@ -80,7 +71,7 @@ cache_entry* get_page(cache *c, const char *uuid);
  * @param sst Pointer to the SST file info containing compression info
  * @return Pointer to the cache entry
  */
-cache_entry* retrieve_entry(cache *c, block_index *index, const char *file_name, sst_f_inf *sst);
+cache_entry retrieve_entry(cache *c, block_index *index, const char *file_name, sst_f_inf *sst);
 
 /**
  * @brief Pins a page in the cache to prevent eviction

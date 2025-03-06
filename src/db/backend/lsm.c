@@ -3,7 +3,6 @@
 #define TOMB_STONE "-"
 #define NUM_HASH 7
 #define LOCKED_TABLE_LIST_LENGTH 2
-#define CURRENT_TABLE 0
 #define PREV_TABLE 1
 #define READER_BUFFS 10
 #define WRITER_BUFFS 10
@@ -42,7 +41,7 @@ int restore_state(storage_engine * e ,int lost_tables){
     }
     int ret = 0;
     for (int i = 0;  i < lost_tables; i++){
-        mem_table * m = e->table[i];
+        mem_table * m = at(e->tables, i);
         char ** file = get_last(w->fn);
         if (file  == NULL  || *file == NULL) return -1;
         FILE * target = fopen(*file, "rb");
@@ -73,14 +72,14 @@ storage_engine * create_engine(char * file, char * bloom_file){
     init_crc32_table();
     storage_engine * engine = (storage_engine*)wrapper_alloc((sizeof(storage_engine)), NULL,NULL);
     if (engine == NULL) return NULL;
-    for (int i = 0; i < LOCKED_TABLE_LIST_LENGTH; i++){
-        engine->table[i] = create_table();
-        if (engine->table[i] == NULL) return NULL; 
-    }
+    engine->tables = List(0, sizeof(mem_table), true);
+    engine->current_table = 0;
     set_debug_defaults(&GLOB_OPTS);
+    for (int i = 0; i < GLOB_OPTS.num_memtable; i++){
+        insert(engine->tables,create_table());
+    }
     engine->meta = load_meta_data(file, bloom_file);
     if (engine->meta == NULL) return NULL;
-    engine->num_table = 0;
     engine->write_pool = create_pool(WRITER_BUFFS);
     if (engine->write_pool == NULL) return NULL;
     engine->cach= create_shard_controller(GLOB_OPTS.num_cache,GLOB_OPTS.LRU_CACHE_SIZE, GLOB_OPTS.BLOCK_INDEX_SIZE);
@@ -111,16 +110,24 @@ int write_record(storage_engine* engine ,db_unit key, db_unit value){
         fprintf(stdout, "WARNING: transcantion failure \n");
         return FAILED_TRANSCATION;
     }
-    if (engine->table[CURRENT_TABLE]->bytes + 4 + key.len + value.len >=  GLOB_OPTS.MEM_TABLE_SIZE){
+    mem_table * table = at(engine->tables, engine->current_table);
+    /*if a spare table does not exist, wait on the table signal for an avaliable table*/
+    if (table == NULL){
+
+    }
+    if (table->bytes + 4 + key.len + value.len >=  GLOB_OPTS.MEM_TABLE_SIZE){
         lock_table(engine);
-        int status = flush_table(engine);
-        if (status != 0) return -1;
+
+    }
+    int flush = min(GLOB_OPTS.num_memtable, GLOB_OPTS.num_to_flush);
+    if (engine->current_table >= flush){
+        flush_all_tables(engine, flush);
     }
     
-    insert_list(engine->table[CURRENT_TABLE]->skip, key, value);
-    engine->table[CURRENT_TABLE]->num_pair++;
-    engine->table[CURRENT_TABLE]->bytes += 4 + key.len + value.len ;
-    map_bit(key.entry,engine->table[CURRENT_TABLE]->filter);
+    insert_list(table->skip, key, value);
+    table->num_pair++;
+    table->bytes += 4 + key.len + value.len ;
+    map_bit(key.entry,table->filter);
     
     return 0;
 }
@@ -188,15 +195,15 @@ char * disk_read(storage_engine * engine, const char * keyword){
         size_t index_block= find_block(sst, keyword);
         block_index * index = at(sst->block_indexs, index_block);
         
-        cache_entry * c = retrieve_entry_sharded(engine->cach, index, sst->file_name, sst);
-        if (c == NULL ){
+        cache_entry c = retrieve_entry_sharded(engine->cach, index, sst->file_name, sst);
+        if (c.buf== NULL ){
             engine->error_code = INVALID_DATA;
             return NULL;
         }
-        int k_v_array_index = json_b_search(c->ar, keyword);
+        int k_v_array_index = json_b_search(c.ar, keyword);
         if (k_v_array_index== -1) continue;
 
-        return  c->ar->values[k_v_array_index].entry;    
+        return  c.ar->values[k_v_array_index].entry;    
     }
     return NULL;
 }
@@ -217,24 +224,26 @@ char * disk_read_snap(snapshot * snap, const char * keyword){
         size_t index_block= find_block(sst, keyword);
         block_index * index = at(sst->block_indexs, index_block);
         
-        cache_entry * c = retrieve_entry_sharded(*snap->cache_ref, index, sst->file_name, sst);
-        if (c == NULL ){
+        cache_entry c = retrieve_entry_sharded(*snap->cache_ref, index, sst->file_name, sst);
+        if (c.buf== NULL ){
             return NULL;
         }
-        int k_v_array_index = json_b_search(c->ar, keyword);
+        int k_v_array_index = json_b_search(c.ar, keyword);
         if (k_v_array_index== -1) continue;
 
-        return  c->ar->values[k_v_array_index].entry;    
+        return  c.ar->values[k_v_array_index].entry;    
     }
     return NULL;
 }
 char* read_record(storage_engine * engine, const char * keyword){
-    Node * entry= search_list(engine->table[CURRENT_TABLE]->skip, keyword);
+    mem_table * table = at(engine->tables, engine->current_table);
+    Node * entry= search_list(table->skip, keyword);
     if (entry== NULL) return disk_read(engine, keyword);
-    return entry->value.entry; 
+    return entry->value.entry;    engine->num_table = 0;
 }
 char* read_record_snap(storage_engine * engine, const char * keyword, snapshot * s){
-    Node * entry= search_list(engine->table[CURRENT_TABLE]->skip, keyword);
+    mem_table * table = at(engine->tables, engine->current_table);
+    Node * entry= search_list(table->skip, keyword);
     if (entry== NULL) return disk_read_snap(s,keyword);
     return entry->value.entry; 
 }
@@ -279,17 +288,62 @@ void seralize_table(SkipList * list, byte_buffer * buffer, sst_f_inf * s){
 }
 
 void lock_table(storage_engine * engine){
-  
-   engine->table[CURRENT_TABLE]->immutable = true;
-   swap(&engine->table[CURRENT_TABLE], &engine->table[PREV_TABLE],8);
-   engine->num_table++;
-   
-   clear_table(engine->table[CURRENT_TABLE]);
-
+   mem_table * table = at(engine->tables, engine->current_table);
+   table->immutable = true;
+   engine->current_table ++;
 }
-int flush_table(storage_engine * engine){
+int flush_all_tables(storage_engine * engine, int flush){
+    /*swap tables asap */
+    if (engine->tables->len > flush){
+        int table_swapped = 0;
+        
+        // Keep track of which indices had their tables swapped
+        int swapped_indices[flush];
+        for (int i = 0; i < flush; i++) {
+            swapped_indices[i] = 0; // Not swapped initially
+        }
+    
+        // Perform the table swaps
+        for (; table_swapped < flush; table_swapped++){
+            int spare_index = flush + table_swapped;
+            mem_table * spare_table = at(engine->tables, spare_index);
+            if (spare_table == NULL || !spare_table->bytes) break;
+            
+            mem_table * used_table = at(engine->tables, table_swapped);
+            swap(spare_table, used_table, sizeof(mem_table));
+        
+            swapped_indices[table_swapped] = 1;
+        } 
+        /*a table was swapped, let the other threads know that a table is available*/
+        if (table_swapped > 0){
+            engine->current_table = 0;
+        }       
+        /*flush and clear all tables in the original first 'flush' positions */
+        for (int i = 0; i < flush; i++){
+            // If this index was swapped, its table is now at position (flush + i)
+            if (swapped_indices[i]) {
+                flush_table(at(engine->tables, flush + i), engine);
+                clear_table(at(engine->tables, flush + i));
+            } 
+            else {
+                flush_table(at(engine->tables, i), engine);
+                clear_table(at(engine->tables, i));
+            }
+        }      
+        return 0;
+    }
+    
+    /*no spares exist*/
+    for (int i = 0; i < flush; i++){
+        flush_table(at(engine->tables, i), engine);
+        clear_table(at(engine->tables, i));
+    }
+    engine->current_table = 0;
+    return 0;
+}
+int flush_table(mem_table *table, storage_engine * engine){
    
-    mem_table * table = engine->table[PREV_TABLE];
+   
     
     byte_buffer * buffer = request_struct(engine->write_pool);
     byte_buffer* compressed_buffer = request_struct(engine->write_pool);
@@ -339,9 +393,7 @@ int flush_table(storage_engine * engine){
     fsync(sst_f->_fileno);
     meta->num_sst_file ++;
     insert(meta->sst_files[0], sst);
-
-    
-    table->immutable = false;
+    /*now a "used table"*/
     table->bytes = 0;
   
     if (engine->cm_ref!= NULL) *engine->cm_ref = true;
@@ -349,43 +401,32 @@ int flush_table(storage_engine * engine){
     return 0;
 
 }
-void free_one_table(mem_table * table){
-    //destroy_b_tree (table->tree);
-    freeSkipList(table->skip);;
-    if (table->num_pair <= 0) free_filter(table->filter);
-    else free(table->filter);
-    free(table);
+void free_one_table(void* table){
+    mem_table * m_table= table;
+   
+    freeSkipList(m_table->skip);;
+    if (m_table->num_pair <= 0) free_filter(m_table->filter);
+    else free(m_table->filter);
     table = NULL;
 }
 void dump_tables(storage_engine * engine){
     printf("DEBUG: Starting dump_tables\n");
-    for(int i = 0;  i < LOCKED_TABLE_LIST_LENGTH; i++){
-        if (engine->table[i]== NULL) continue;
-        printf("DEBUG: Dump table[%d] - addr: %p, bytes: %zu, immutable: %d\n",
-               i, (void*)engine->table[i], engine->table[i]->bytes, engine->table[i]->immutable);
+    for(int i = 0;  i < engine->tables->len; i++){
+        mem_table * table = at(engine->tables, i);
+        if (table  == NULL) continue;
         
-        if (engine->table[i]->bytes > 0 && i==0){
-      
-            //this should be changed asap to stop edgecases
-            lock_table(engine);
-            flush_table(engine);
+        if (table->bytes > 0){
+            flush_table(table, engine);
         }
     }
     printf("DEBUG: Finished dump_tables\n");
-    //fclose(engine->table->file);
-}
-void free_tables(storage_engine * engine){
-    for(int i = 0;  i < LOCKED_TABLE_LIST_LENGTH; i++){
-        if (engine->table[i]== NULL) continue;
-        free_one_table(engine->table[i]);
-        engine->table[i] = NULL;
-    }
+ 
 }
 void free_engine(storage_engine * engine, char* meta_file,  char * bloom_file){
     dump_tables(engine);
     destroy_meta_data(meta_file, bloom_file,engine->meta);  
     engine->meta = NULL;
-    free_tables(engine);
+    free_list(engine->tables, &free_one_table);
     kill_WAL(engine->w, request_struct(engine->write_pool));
     free_pool(engine->write_pool, &free_buffer);
     free_shard_controller(&engine->cach);

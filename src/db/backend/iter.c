@@ -38,8 +38,9 @@ void init_sst_iter(sst_iter * cursor, sst_f_inf* level) {
 }
 void init_mem_table_iters(mem_table_iter *mem_table_iters, storage_engine *s, size_t num_tables) {
     for (size_t i = 0; i < num_tables; i++) {
-        mem_table_iters[i].t = s->table[i];
-        mem_table_iters[i].cursor = s->table[i]->skip->header->forward[0];
+        mem_table * table = at(s->tables, i);
+        mem_table_iters[i].t = table;
+        mem_table_iters[i].cursor = table->skip->header->forward[0];
     }
 }
 void init_level_iters(level_iter *level_iters, storage_engine *s, size_t num_levels) {
@@ -83,8 +84,8 @@ merge_data next_entry(block_iter *b, shard_controller * c,sst_f_inf * inf) {
        return final;
     }
     if (b->index->num_keys!= b->arr->len){
-        cache_entry * ce = retrieve_entry_sharded(*c, b->index, inf->file_name, inf);
-        b->arr = ce->ar;
+        cache_entry ce = retrieve_entry_sharded(*c, b->index, inf->file_name, inf);
+        b->arr = ce.ar;
     }
     db_unit *ret = &b->arr->values[b->curr_key_ind];
     db_unit *key = &b->arr->keys[b->curr_key_ind];
@@ -110,11 +111,11 @@ merge_data next_key_block(sst_iter *sst,  shard_controller * c) {
         if (index == NULL) {
             return bad_return;
         }
-        cache_entry *ce = retrieve_entry_sharded(*c, index, sst->file->file_name, sst->file);
-        if (ce == NULL || ce->ar == NULL) {
+        cache_entry ce = retrieve_entry_sharded(*c, index, sst->file->file_name, sst->file);
+        if (ce.ar == NULL || ce.ar == NULL) {
             return bad_return;
         }
-        sst->cursor.arr = ce->ar;
+        sst->cursor.arr = ce.ar;
         sst->cursor.curr_key_ind = 0;
         sst->cursor.index = index;
     }
@@ -163,9 +164,9 @@ void seek_sst(sst_iter* sst_it, shard_controller * cach ,const char * prefix){
         sst_it->curr_index = b_index;
         block_index * entry = at(f->block_indexs, b_index);
         sst_it->cursor.index = entry;
-        cache_entry * c = retrieve_entry_sharded(*cach, sst_it->cursor.index, f->file_name, f);
-        int k_v_array_index = prefix_b_search(c->ar,prefix);
-        sst_it->cursor.arr = c->ar;
+        cache_entry  c = retrieve_entry_sharded(*cach, sst_it->cursor.index, f->file_name, f);
+        int k_v_array_index = prefix_b_search(c.ar,prefix);
+        sst_it->cursor.arr = c.ar;
         sst_it->cursor.curr_key_ind = k_v_array_index;
 }
 /*gotta make everything work with the new pq */

@@ -101,7 +101,7 @@ int sample_for_dict(sst_cmpr_inf * sst, int sst_size, int compression_level, voi
 }
 int fill_dicts(compress_tr_inf * inf, int sst_size,  list * blocks, byte_buffer * input_buffer){
     prep_dict_compression( inf , blocks, input_buffer);
-    return sample_for_dict(inf->sst,sst_size, GLOB_OPTS.compress_level,inf->buffer, inf->sizes->arr, inf->sizes->len);
+    return sample_for_dict(inf->sst,sst_size, GLOB_OPTS.compress_level,inf->buffer->buffy, inf->sizes->arr, inf->sizes->len);
 }
 int compress_dict(sst_cmpr_inf * sst,  byte_buffer * sst_stream, byte_buffer * dest,  int size ){
     char * place_to_write = buf_ind(dest, dest->curr_bytes);

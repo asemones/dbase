@@ -51,6 +51,8 @@ typedef struct option{
     int dict_size_ratio; /*sets the ratio of file size to dict size, will determine real dictionary size. set to 0 for no dict */
     int compress_level;
     int num_cache;
+    int num_memtable;
+    int num_to_flush;
 }option;
 
 /**
@@ -82,6 +84,8 @@ static inline void set_defaults(option * opt){
     opt->BLOOM_F_N = "bloom.bin";
     opt->NUM_FILES_COMPACT_ZER0 = 5;
     opt->num_cache = 128;
+    opt->num_memtable =4;
+    opt->num_to_flush = 2;
 
 }
 static inline void set_debug_defaults(option * opt){
@@ -106,6 +110,8 @@ static inline void set_debug_defaults(option * opt){
     opt->dict_size_ratio = 100;
     opt->compress_level =1;
     opt->num_cache = 8;
+    opt->num_memtable =2;
+    opt->num_to_flush = 4;
 
 }
 

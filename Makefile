@@ -1,5 +1,5 @@
 CC      := clang
-CFLAGS  := -Wall -g -m64  -I./src -gdwarf-4 -mavx 
+CFLAGS  := -Wall -g -m64  -I./src -gdwarf-4 -mavx -fsanitize=address
 LDFLAGS := -debug -pthread -luuid -lzstd
 
 OBJDIR := build

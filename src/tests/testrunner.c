@@ -14,7 +14,7 @@
 #include "test_iter.h"
 #include "testwal.h"
 #include "testcompress.h"
-
+#include "test scheduler.h"
 
 
 
@@ -67,6 +67,10 @@ int main(void) {
     fprintf(stderr, "RUNNING IO TESTS\n");
     RUN_TEST(test_writeFile);
     RUN_TEST(test_readFile);
+    RUN_TEST(test_io_uring_write);
+    RUN_TEST(test_io_uring_read);
+    RUN_TEST(test_async_io_with_event_loop);
+    RUN_TEST(test_benchmark_io_performance);
     fprintf(stderr,"Running compression tests\n");
     RUN_TEST(test_regular_compress);
     RUN_TEST(test_regular_decompress);

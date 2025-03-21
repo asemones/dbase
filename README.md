@@ -9,4 +9,32 @@ An expanded key-value store closer to a small scale production ready storage eng
 
 ~~Next, I will decide between whether to build a sql or nosql database ontop, likely in a systems language better equipped for larger projects(c++ or rust). Handrolling vectors is.. not fun. This will include a distrbuted layer ontop (sharding and replication)~~ distributed sql is the plan. 
 
+range based sharding per core for each node to reduce contention?
 
+coroutine based cooperative multitasking
+consistient hashing between cores with a merge for range scans?
+new channel type, consumer writes to an array, producer has spare memory in its queue. producer endlessly enques in a circle until it reaches a marked slot. check if that slot
+has been read. if it has, overwrite. if full, wait on a cond variable the consumer should activate. 
+
+Client Command
+                        │
+                        ▼
+              ┌───────────────────┐
+              │   Coordinator     │
+              │     Thread        │
+              └───────┬───────────┘
+                      │
+        ┌─────────────┼─────────────┐
+        │             │             │
+        ▼             ▼             ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│ Shard 1      │ │ Shard 2      │ │ Shard 3      │
+│ Task Queue   │ │ Task Queue   │ │ Task Queue   │
+└──────┬───────┘ └──────┬───────┘ └──────┬───────┘
+       │                │                │
+       ▼                ▼                ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│ KV Store     │ │ KV Store     │ │ KV Store     │
+│ Coroutine    │ │ Coroutine    │ │ Coroutine    │
+│ Scheduler    │ │ Scheduler    │ │ Scheduler    │
+└──────────────┘ └──────────────┘ └──────────────┘

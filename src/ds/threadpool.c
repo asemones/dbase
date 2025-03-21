@@ -105,7 +105,7 @@ void get_result(thread * p , thrd_pq_value work_item){
      pthread_mutex_unlock(&((p->thrpool->out_lock)));
     return;
 }
-void kill(thread_p * p){
+void kill_thr(thread_p * p){
     p->killSig = true;
     return;
 }
@@ -114,7 +114,7 @@ void destroy_pool(thread_p *p){
         return;
     }
 
-    kill(p);
+    kill_thr(p);
     pthread_mutex_lock(&(p->counter_lock));
     pthread_cond_broadcast(&(p->queue_cond)); 
 

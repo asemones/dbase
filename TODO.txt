@@ -1,4 +1,6 @@
 implement the io-uring write engine
+implement scheduling with coroutines
+//complete both by march 14th, fully tested and intergrated
 consider key-value seperation
 iterator filters
 cache line bloom filters

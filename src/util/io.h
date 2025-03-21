@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -6,10 +8,61 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include "alloc_util.h"
+#include <liburing.h>
+#include <fcntl.h>
+#include "../ds/list.h"
+#include "../ds/byte_buffer.h"
+#include "../ds/structure_pool.h"
+#include "../ds/arena.h"
+#include <sys/resource.h>
+
 #ifndef IO_H
 #define IO_H
-//typedef void (*aioCallback)(void * fd, void *arg);
-//typedef void (*aioCallback)(void * fd, void **arg);
+
+enum operation{
+    READ,
+    WRITE,
+    OPEN,
+    CLOSE,
+};
+typedef void (*aio_callback)(void *arg);
+/*since we want no memcpys, EVERY SINGLE buffer MUST be owned by the manager*/
+
+struct io_manager{
+    struct_pool * sst_table_buffers;
+    struct_pool * mem_table_buffers;
+    struct_pool * four_kb;
+    struct_pool * io_requests; // we keep these tasks heap allocated to mimimize the stack size
+    struct_pool * open_close_req;
+    struct io_uring ring;
+    arena a;
+    int num_in_queue;
+    struct timeval val;
+};
+union descriptor{
+    uint64_t fd;
+    char * fn;
+}; 
+struct io_request{
+    union descriptor desc; 
+    int priority;
+    off_t offset;
+    size_t len;
+    aio_callback callback;
+    void * callback_arg;
+    enum operation op ;
+    byte_buffer* buf;
+    int response_code;
+}; 
+struct open_close_req{
+    union descriptor desc; 
+    enum operation op;
+    char * f_n;
+    int flags;
+    mode_t perm;
+};
+//typedef void (*aio_callback)(void * fd, void *arg);
+//typedef void (*aio_callback)(void * fd, void **arg);
 /*
 typedef struct event_loop {
     int kq;
@@ -21,7 +74,7 @@ typedef struct event_loop {
     pthread_mutex_t add_lock;
 }event_loop;
 event_loop* create_loop(size_t size);
-//int add(eventLoop* loop, int fd, short filter, aioCallback* callback, void* userdata);
+//int add(eventLoop* loop, int fd, short filter, aio_callback* callback, void* userdata);
 void run_loop(event_loop * loop);
 */
 /**
@@ -109,43 +162,10 @@ static inline long get_file_size(FILE *file) {
     
     return size;
 }
+void init_io_manager(struct io_manager * manage, int num_4kb, int num_sst_tble, int num_memtable, int sst_tbl_s, int mem_tbl_s);
+int chain_open_op_close(struct io_uring *ring, struct io_request * req);
+int add_open_close_requests(struct io_uring *ring, struct open_close_req requests, int seq);
+int add_read_write_requests(struct io_uring *ring, struct io_request * requests, int seq);
+int process_completions(struct io_uring *ring);
 
-/*eventLoop* createLoop(size_t size){
-    eventLoop * loop =(eventLoop*)wrapper_alloc((sizeof (*loop)), NULL,NULL);
-    loop->events = (struct kevent *)wrapper_alloc((sizeof( struct kevent)), NULL,NULL* size);
-    loop->maxEvents = size;
-    loop->kq = kqueue();
-    loop->numEvent =0;
-    loop->running = true;
-    pthread_mutex_init(&loop->queueLock,NULL);
-    pthread_mutex_init(&loop->addLock,NULL);
-    return loop;
-}
-
-int add(eventLoop* loop, int fd, short filter, aioCallback* callback, void* userdata){
-    if (loop->numEvent >= loop->maxEvents){
-        return -1;
-    }
-    struct kevent *ev = &loop->events[loop->numEvent++];
-    pthread_mutex_lock(&loop->addLock);
-    EV_SET(ev, fd, filter, EV_ADD | EV_ENABLE, 0, 0, userdata);
-    pthread_mutex_unlock(&loop->addLock);
-    return kevent(loop->kq, ev, 1, NULL, 0, NULL);
-}
-void runLoop(eventLoop * loop){
-    while(atomic_load(&loop->running)){
-         pthread_mutex_lock(&loop->queueLock);
-         int n = kevent(loop->kq, NULL, 0, loop->events, loop->maxEvents, NULL);
-         pthread_mutex_unlock(&loop->queueLock);
-         for (int i = 0;  i < n; i ++){
-             struct kevent *ev = &loop->events[i];
-             aioCallback cb = (aioCallback*)ev->udata;
-             cb(ev->ident, ev->udata);
-         }
-    }
-}
-void destroyLoop(eventLoop * loop){
-    loop->running  = false;
-}
-*/
 #endif

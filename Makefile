@@ -1,6 +1,6 @@
 CC      := clang
-CFLAGS  := -Wall -g -m64  -I./src -gdwarf-4 -mavx -fsanitize=address
-LDFLAGS := -debug -pthread -luuid -lzstd
+CFLAGS  := -Wall -g -m64 -I./src -gdwarf-4 -mavx -fsanitize=address
+LDFLAGS := -debug -pthread -luuid -lzstd -luring
 
 OBJDIR := build
 TARGET := $(OBJDIR)/test
@@ -12,6 +12,7 @@ SRCS += $(wildcard src/db/backend/*.c)
 SRCS += $(wildcard src/db/backend/dal/*.c)
 SRCS += src/tests/testrunner.c
 SRCS += src/tests/unity/src/unity.c
+SRCS += src/util/io.c
 
 OBJS   := $(notdir $(SRCS))
 OBJS   := $(OBJS:.c=.o)

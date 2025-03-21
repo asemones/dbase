@@ -15,6 +15,7 @@
         "type_traits": "c",
         "utility": "c",
         "initializer_list": "c",
-        "*.tcc": "c"
+        "*.tcc": "c",
+        "vector": "c"
     }
 }

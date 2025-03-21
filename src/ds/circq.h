@@ -1,0 +1,106 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+
+
+// Macro to define a circular queue for a specific type
+#define DEFINE_CIRCULAR_QUEUE(T, NAME) \
+\
+typedef struct { \
+    T* array;         \
+    int capacity;      \
+    int front;         \
+    int rear;         \
+    int size;          \
+} NAME; \
+\
+/* Function to create a new circular queue with given capacity */ \
+NAME* NAME##_create(int capacity) { \
+    NAME* queue = (NAME*)malloc(sizeof(NAME)); \
+    if (!queue) return NULL;   \
+    \
+    queue->capacity = capacity; \
+    queue->front = -1; \
+    queue->rear = -1; \
+    queue->size = 0; \
+    queue->array = (T*)malloc(capacity * sizeof(T)); \
+    \
+    if (!queue->array) { \
+        free(queue); \
+        return NULL; \
+    } \
+    \
+    return queue; \
+} \
+\
+ \
+bool NAME##_is_full(NAME* queue) { \
+    return queue->size == queue->capacity; \
+} \
+\
+/* Function to check if the queue is empty */ \
+bool NAME##_is_empty(NAME* queue) { \
+    return queue->size == 0; \
+} \
+\
+ \
+bool NAME##_enqueue(NAME* queue, T item) { \
+    if (NAME##_is_full(queue)) { \
+        return false;  /* Queue overflow */ \
+    } \
+    \
+    /* If queue is initially empty */ \
+    if (queue->front == -1) { \
+        queue->front = 0; \
+    } \
+    \
+    /* Move rear in a circular way */ \
+    queue->rear = (queue->rear + 1) % queue->capacity; \
+    queue->array[queue->rear] = item; \
+    queue->size++; \
+    \
+    return true; \
+} \
+\
+ \
+bool NAME##_dequeue(NAME* queue, T* item) { \
+    if (NAME##_is_empty(queue)) { \
+        return false;  /* Queue underflow */ \
+    } \
+    \
+    *item = queue->array[queue->front]; \
+    \
+     \
+    if (queue->front == queue->rear) { \
+        queue->front = -1; \
+        queue->rear = -1; \
+    } \
+    else { \
+        \
+        queue->front = (queue->front + 1) % queue->capacity; \
+    } \
+    \
+    queue->size--; \
+    return true; \
+} \
+\
+ \
+bool NAME##_peek(NAME* queue, T* item) { \
+    if (NAME##_is_empty(queue)) { \
+        return false; \
+    } \
+    \
+    *item = queue->array[queue->front]; \
+    return true; \
+} \
+\
+ \
+void NAME##_destroy(NAME* queue) { \
+    if (queue) { \
+        if (queue->array) { \
+            free(queue->array); \
+        } \
+        free(queue); \
+    } \
+} \
+\

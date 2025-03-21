@@ -20,6 +20,7 @@
  */
 typedef struct byte_buffer {
     char * buffy;
+    size_t id; /*to register buffers with the kernel*/
     void * utility_ptr;
     size_t max_bytes;
     size_t curr_bytes;

@@ -10,7 +10,7 @@ aseDB_iter * create_aseDB_iter(){
     if (dbi == NULL ) return NULL;
     dbi->l_0_sst_iters = List(0,sizeof(sst_iter), false);
     dbi->pq = Frontier(sizeof(merge_data),false, &compare_merge_data);
-    dbi->ret = List(0,sizeof(merge_data), false);
+    dbi->ret = List(0,sizeof(db_unit), false);
     if (dbi->l_0_sst_iters == NULL ||  dbi->ret == NULL){
         if (dbi->l_0_sst_iters !=NULL){
             free_list(dbi->l_0_sst_iters, NULL);
@@ -229,6 +229,7 @@ merge_data aseDB_iter_next(aseDB_iter * iter){
      
 
     merge_data dummy = {EODB,EODB, -1};
+    next = dummy;
     int cmp_res = -1;
     do
     {
@@ -273,15 +274,14 @@ merge_data aseDB_iter_next(aseDB_iter * iter){
         }
         if (cmp_res == 0 && next.key !=NULL){
             merge_data element_to_keep=  same_merge_key(next,*last_element);
-            inset_at(iter->ret, &element_to_keep, iter->ret->len-1);
+            inset_at(iter->ret, element_to_keep.value, iter->ret->len-1);
+            next = element_to_keep;
 
         }
-        else if (next.key!= NULL)insert(iter->ret,&next);
+        else if (next.key!= NULL)insert(iter->ret,next.value);
 
-    } while (cmp_res == 0 && next.key !=NULL) ;
-
-    merge_data* final= get_last(iter->ret);
-    return (final != NULL) ? *final : dummy;
+    } while (cmp_res == 0 && next.key !=NULL);
+    return next;
 }
 int write_db_entry(byte_buffer * b, void * element){
     merge_data * m = element;
@@ -292,6 +292,18 @@ int write_db_entry(byte_buffer * b, void * element){
     size+= write_db_unit(b, *m->key);
     size+= write_db_unit(b, *m->value);
     return size;
+}
+list * scan_records(aseDB_iter * iter, char * prefix_start, char * prefix_end){
+    seek(iter,prefix_start);
+    merge_data dummy = {EODB,EODB, -1};
+    merge_data key_v_pair;
+    while ((key_v_pair = aseDB_iter_next(iter))!= dummy){
+        if (strcmp(key_v_pair.key, prefix_end) > 0 ){ /*change this to use a fancier comparision function*/
+            iter->ret->len-= 1; /*subtract 1 to len to remove the most recent violating record*/
+            break;
+        }
+    }
+    return iter->ret;
 }
 void free_aseDB_iter(aseDB_iter *iter) {
     free_list(iter->l_0_sst_iters, NULL);

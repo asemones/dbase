@@ -224,6 +224,7 @@ int write_db_entry(byte_buffer * b, void * element);
  * @brief Frees a database iterator and its resources
  * @param iter Pointer to the database iterator to free
  */
+list * scan_records(aseDB_iter * iter, char * prefix_start, char * prefix_end);
 void free_aseDB_iter(aseDB_iter *iter);
 
 

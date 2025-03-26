@@ -267,13 +267,15 @@ merge_data aseDB_iter_next(aseDB_iter * iter){
         }
         enqueue(iter->pq, &next_grab);
         cmp_res = compare_merge_data(&next, last_element);
-
+        if (iter->filter && !iter->filter(next.key, next.value)){
+            cmp_res = 0;
+            continue;
+        }
         if (cmp_res == 0 && next.key !=NULL){
             merge_data element_to_keep=  same_merge_key(next,*last_element);
             inset_at(iter->ret, &element_to_keep, iter->ret->len-1);
 
         }
-
         else if (next.key!= NULL)insert(iter->ret,&next);
 
     } while (cmp_res == 0 && next.key !=NULL) ;

@@ -6,6 +6,7 @@
 #include "byte_buffer.h"
 #include "../db/backend/key-value.h"
 #include "../util/error.h"
+#include "arena.h"
 
 #pragma once
 
@@ -19,8 +20,8 @@
  */
 typedef struct Node {
     db_unit key;
-    db_unit value;
     struct Node* forward[];
+    db_unit value;
 } Node;
 /**
  * @brief Skip list data structure for efficient key-value storage and retrieval
@@ -32,6 +33,9 @@ typedef struct Node {
 typedef struct SkipList {
     int level;
     Node* header;
+    arena * skiplist_alloactor;
+    int arena_num;
+    int curr_arena;
     int (*compare)(const void*, const void*);
 } SkipList;
 

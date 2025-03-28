@@ -15,7 +15,7 @@ typedef struct arena {
     size_t size;
     size_t capacity;
     void *data;
-    void *next;
+    arena *next;
 }
 arena;
 /**
@@ -51,3 +51,4 @@ void *arena_alloc(arena *a, size_t size);
  * @param a Pointer to the arena to free
  */
 void free_arena(void *a);
+void init_arena(arena * a, size_t size);

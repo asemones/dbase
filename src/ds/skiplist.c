@@ -1,8 +1,9 @@
 
 
 #include "skiplist.h"
-
+#define NUM_ARENA 50
 db_unit dummy = {0, NULL};
+Node* allocate_a_node(SkipList * list, int level, db_unit key, db_unit value);
 Node* create_skiplist_node(int level, db_unit key, db_unit value) {
     Node* node = (Node*)malloc(sizeof(Node) + level * sizeof(Node*));
     if (node == NULL) return NULL;
@@ -16,18 +17,67 @@ Node* create_skiplist_node(int level, db_unit key, db_unit value) {
 
 SkipList* create_skiplist(int (*compare)(const void*, const void*)) {
     SkipList* list = (SkipList*)malloc(sizeof(SkipList));
+    list->skiplist_alloactor = calloc(sizeof(arena) * NUM_ARENA); /*cheap*/
     if (list == NULL) return NULL;
     list->level = 1;
     list->compare = compare;
-    list->header = create_skiplist_node(MAX_LEVEL, dummy, dummy);
+    list->header = allocate_a_node(list, MAX_LEVEL, dummy, dummy);
     if (list->header == NULL){
         free(list);
         return NULL;
     }
+   
+    memset(&list->skiplist_alloactor[0], 0, sizeof(arena) * NUM_ARENA);
+    
     return list;
 }
-
-
+void reset_skip_list(SkipList * list){
+    for(int i = 0; i < list->arena_num; i++){
+        reset_arena(&list->skiplist_alloactor[i]);
+    }
+    list->header = create_skiplist_node(MAX_LEVEL, dummy, dummy);
+}
+static inline int calculate_avg_node_size(){
+    const int avg_num_level = 6;
+    return sizeof(Node) + avg_num_level * sizeof(Node*);
+}
+/*if average entry size set to 0 use default*/
+void init_skiplist_allocator(SkipList * list, int entry_total, int average_entry_size, int start_size){
+    const int default_average = 128;
+    if (average_entry_size <= 0 ) average_entry_size = default_average;
+    int num_nodes = entry_total / average_entry_size;
+    int mem_size = num_nodes * calculate_avg_node_size();
+    int num_arenas_to_make = mem_size/num_nodes;
+    int size_per_arena = mem_size/num_arenas_to_make;
+    int rounded_size = size_per_arena + (size_per_arena % calculate_avg_node_size());
+    list->curr_arena = 0;
+    if (start_size >= mem_size){
+        list->arena_num = 1;
+        init_arena(&list->skiplist_alloactor[0], start_size);
+        return;
+    }
+    for(int i = 0; i <  num_arenas_to_make; i++){
+        init_arena(&list->skiplist_alloactor[i],, size_per_arena);
+    }
+    list->arena_num = num_arenas_to_make
+    
+}
+Node* allocate_a_node(SkipList * list, int level, db_unit key, db_unit value){
+    Node* node = arena_alloc(&list->skiplist_alloactor[list->curr_arena], sizeof(Node) + level * sizeof(Node*));
+    if (node == NULL){
+        list->curr_arena ++;
+        node = arena_alloc(&list->skiplist_alloactor[list->curr_arena], sizeof(Node) + level * sizeof(Node*))
+    }
+    if (node == NULL) {
+        return NULL;
+    }
+    node->key = key;
+    node->value = value;
+    for (int i = 0; i < level; i++) {
+        node->forward[i] = NULL;
+    }
+    return node;
+}
 int random_level() {
     int level = 1;
     while ((rand() & 1) && level < MAX_LEVEL) {
@@ -67,7 +117,7 @@ int insert_list(SkipList* list, db_unit key, db_unit value) {
         list->level = level;
     }
 
-    Node* newNode = create_skiplist_node(level, key, value );
+    Node* newNode = allocate_a_node(list, level, key, value );
     if (newNode == NULL){
         return STRUCT_NOT_MADE;
     }
@@ -107,7 +157,7 @@ Node* search_list_prefix(SkipList* list, void* key) {
     else return NULL;
 
 }
-
+/*this should never really be used*/
 void delete_element(SkipList* list, void* key) {
     Node* update[MAX_LEVEL];
     Node* x = list->header;

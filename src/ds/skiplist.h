@@ -22,6 +22,7 @@ typedef struct Node {
     db_unit key;
     struct Node* forward[];
     db_unit value;
+    int id; 
 } Node;
 /**
  * @brief Skip list data structure for efficient key-value storage and retrieval
@@ -47,7 +48,7 @@ typedef struct SkipList {
  * @return 0 on success, error code on failure
  */
 int insert_list(SkipList* list, db_unit key, db_unit value);
-
+int insert_list_txn(SkipList* list, db_unit key, db_unit value, int id);
 /**
  * @brief Creates a new node for the skip list
  * @param level The level of the node

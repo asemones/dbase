@@ -125,10 +125,55 @@ int insert_list(SkipList* list, db_unit key, db_unit value) {
         newNode->forward[i] = update[i]->forward[i];
         update[i]->forward[i] = newNode;
     }
+    newNode->id = 0; 
+    return 0;
+}
+int insert_list_txn(SkipList* list, db_unit key, db_unit value, int id) {
+    Node* update[MAX_LEVEL];
+    Node* x = list->header;
+    for (int i = list->level - 1; i >= 0; i--) {
+        while (x->forward[i] && list->compare(x->forward[i]->key.entry, key.entry) < 0) {
+            x = x->forward[i];
+        }
+        update[i] = x;
+    }
+
+    int level = random_level();
+    if (level > list->level) {
+        for (int i = list->level; i < level; i++) {
+            update[i] = list->header;
+        }
+        list->level = level;
+    }
+
+    Node* newNode = allocate_a_node(list, level, key, value );
+    if (newNode == NULL){
+        return STRUCT_NOT_MADE;
+    }
+    for (int i = 0; i < level; i++) {
+        newNode->forward[i] = update[i]->forward[i];
+        update[i]->forward[i] = newNode;
+    }
+    newNode->id =id;
     return 0;
 }
 
 Node* search_list(SkipList* list, const void* key) {
+    Node* x = list->header;
+    for (int i = list->level - 1; i >= 0; i--) {
+        while (x->forward[i] && list->compare(x->forward[i]->key.entry, key) < 0) {
+            x = x->forward[i];
+        }
+    }
+    x = x->forward[0];
+    if (x && list->compare(x->key.entry, key) == 0) {
+        return x;
+    } 
+    else {
+        return NULL;
+    }
+}
+Node* search_list_txn(SkipList* list, const void* key, int id) {
     Node* x = list->header;
     for (int i = list->level - 1; i >= 0; i--) {
         while (x->forward[i] && list->compare(x->forward[i]->key.entry, key) < 0) {

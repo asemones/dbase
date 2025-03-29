@@ -1,6 +1,19 @@
 implement the io-uring write engine
 implement scheduling with coroutines
-//complete both by march 30th, fully tested and intergrated
+//complete both by march 31st, fully tested
+//do these first
+//maybe dont integrate 
+
+txn stuff:
+proper read/write for txns, consistent etc
+properly check l_0 and l_1->l_7 for the correct keys + filter based on the isolation level 
+skiplist nodes need to use times or some sort of counting method (could use tx id + clever )
+skiplist nodes can store an array of the same keys with different verisons as a solution
+to mvcc
+properly pin pages, memtables etc
+properly scan memtables
+
+
 consider key-value seperation
 mirgrate db to use fancier comparisions
 cache line bloom filters

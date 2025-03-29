@@ -16,6 +16,7 @@
 #include "option.h"
 #include "key-value.h"
 #include "WAL.h"
+#include "../../util/maths.h"
 #include "indexer.h"
 #include  "../../ds/cache_shrd_mnger.h"
 #ifndef LSM_H
@@ -164,8 +165,7 @@ char * disk_read(storage_engine * engine, const char * keyword);
  * @param keyword The key to search for.
  * @return A pointer to the value read from disk, or NULL if not found.
  */
-char * disk_read_snap(snapshot * snap, const char * keyword);
-
+char * scan_l_0(sst_f_inf * ssts, const char * key, int max);
 /**
  * @brief Reads a value from the storage engine based on a given key.
  * @param engine A pointer to the storage engine.
@@ -181,8 +181,6 @@ char* read_record(storage_engine * engine, const char * keyword);
  * @param s A pointer to the snapshot.
  * @return A pointer to the value read from the storage engine, or NULL if not found.
  */
-char* read_record_snap(storage_engine * engine, const char * keyword, snapshot * s);
-
 /**
  * @brief Serializes a SkipList to a byte buffer.
  * @param list A pointer to the SkipList.

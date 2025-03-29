@@ -94,14 +94,6 @@ compact_manager * init_cm(meta_data * meta, shard_controller * c){
     return manager;
 }
 
-int compare_time_stamp(struct timeval t1, struct timeval t2){
-    if (t1.tv_sec < t2.tv_sec) return -1;    
-    else if (t1.tv_sec > t2.tv_sec) return 1;
-
-    if (t1.tv_usec < t2.tv_usec) return -1;
-    else if (t1.tv_usec > t2.tv_usec) return 1;
-    return 0;
-}
 
 int entry_len(merge_data entry){
     return entry.key->len + sizeof(entry.key->len) + entry.value->len + sizeof(entry.value->len);

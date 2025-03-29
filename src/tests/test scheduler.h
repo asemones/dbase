@@ -61,3 +61,6 @@ void test_tasks_no_io(){
    pthread_join(&thread, NULL);
 
 }
+void test_tasks_io_only(){
+
+}

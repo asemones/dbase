@@ -35,6 +35,6 @@ Client Command
        ▼                ▼                ▼
 ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
 │ KV Store     │ │ KV Store     │ │ KV Store     │
-│ Coroutine    │ │ Coroutine    │ │ Coroutine    │
+│ Coroutines   │ │ Coroutines   │ │ Coroutines   │
 │ Scheduler    │ │ Scheduler    │ │ Scheduler    │
 └──────────────┘ └──────────────┘ └──────────────┘

@@ -1,5 +1,6 @@
 #include "api.h"
 
+/*STANDARD API*/
 char * get(storage_engine * engine, char * key){
     snapshot *temp_snap = engine->meta->current_tx_copy;
     ref_snapshot(engine->meta->current_tx_copy);
@@ -7,13 +8,21 @@ char * get(storage_engine * engine, char * key){
     deref_with_free(temp_snap);
     return ret;
 }
-char ** scan(storage_engine * engine, char * start, char * end){
+int put(storage_engine * engine, db_unit key, db_unit value){
+    return write_record(engine, key, value)
+}
+int del(storage_engine * engine, db_unit key){
+    return write_record(engine, key,TOMB_STONE);
+}
+list * forward_scan(storage_engine * engine, char * start, char * end, aseDB_iter * provided){
     snapshot *temp_snap = engine->meta->current_tx_copy;
     ref_snapshot(engine->meta->current_tx_copy);
-    aseDB_iter * iter = create_aseDB_iter();
-    init_aseDB_iter(&iter, engine);
-    //implement scan_records
-    //return scan_records(engine, start, end);
-    
+    if (provided == NULL){
+        provided = create_aseDB_iter();
+        init_aseDB_iter(provided, engine);
+    }
+    list * iter_return = scan_records(engine, start, end);
     deref_with_free(temp_snap);
+    return iter_return;
 }
+

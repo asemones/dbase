@@ -2,9 +2,10 @@
 
 
 
-snapshot * create_snap(){
+snapshot * create_snap(int txn_id){
     snapshot * s = malloc(sizeof(snapshot));
     s->reference_counter = 0;
+    s->txn_id = txn_id;
     s->timestamp = malloc(TIME_STAMP_SIZE);
     s->cache_ref = NULL;
     return s;
@@ -22,7 +23,7 @@ int init_snapshot(snapshot * master, snapshot * s, shard_controller*c){
             insert(s->sst_files[i], &f);
         }
     }
-    grab_time_char(s->timestamp);
+    gettimeofday(&s->time, NULL);
     s->cache_ref = c;
     return OK;
 }

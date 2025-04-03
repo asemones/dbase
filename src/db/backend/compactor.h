@@ -184,15 +184,6 @@ int compare_jobs(const void * job1, const void * job2);
  * @return Pointer to the initialized compaction manager.
  */
 compact_manager * init_cm(meta_data * meta, shard_controller * c);
-
-/**
- * @brief Compares two timestamps.
- * @param t1 First timestamp.
- * @param t2 Second timestamp.
- * @return Negative if t1 < t2, 0 if equal, positive if t1 > t2.
- */
-int compare_time_stamp(struct timeval t1, struct timeval t2);
-
 /**
  * @brief Calculates the length of a merge data entry.
  * @param entry The merge data entry.

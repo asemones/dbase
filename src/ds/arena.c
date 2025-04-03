@@ -14,6 +14,12 @@ arena *malloc_arena(size_t size) {
     a->next = NULL;
     return a;
 }
+void init_arena(arena * a, size_t size){
+    a->size = size;
+    a->capacity = 0;
+    a->next = NULL;
+    a->data = malloc(size);
+}
 
 arena *calloc_arena(size_t size) {
     arena *a = (arena *)malloc(sizeof(arena));
@@ -35,7 +41,6 @@ void reset_arena(void *va) {
     memset(a->data, 0, a->size);
     a->capacity = 0;
 }
-
 void *arena_alloc(arena *a, size_t size) {
     if (a->capacity + size > a->size) {
         return NULL;

@@ -16,7 +16,7 @@ has a gurantee of no range overlaps, only one sst_iter is needed per level and o
 level 0. Since blocks also have a gurantee of being ordered, only one block index cursor is required
 per level. This enables each sub-iter to return their "next" and have that compared to every
 other "next".*/
-
+typedef bool (*key_filter_fn)(db_unit* key, db_unit* value);
 /**
  * @brief Iterator for traversing a block of key-value pairs
  * @struct block_iter
@@ -83,6 +83,7 @@ typedef struct aseDB_iter {
     frontier * pq;
     list * ret;
     shard_controller * c;
+    key_filter_fn filter;
 } aseDB_iter;
 /**
  * @brief Compares two merge_data structures for sorting
@@ -223,7 +224,9 @@ int write_db_entry(byte_buffer * b, void * element);
  * @brief Frees a database iterator and its resources
  * @param iter Pointer to the database iterator to free
  */
+list * scan_records(aseDB_iter * iter, char * prefix_start, char * prefix_end);
 void free_aseDB_iter(aseDB_iter *iter);
+
 
 
 

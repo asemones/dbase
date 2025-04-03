@@ -7,6 +7,7 @@
 #include "indexer.h"
 #include "../../ds/cache.h"
 #include "../../ds/cache_shrd_mnger.h"
+#include <sys/time.h>
 #define LEVELS 7
 #define TIME_STAMP_SIZE 64
 #pragma once
@@ -30,7 +31,7 @@ freeing of resources. It's the solution for allowing concurrenct compaction and 
  * @param cache_ref Pointer to the shard controller for cache operations
  */
 typedef struct snapshot{
-    char * timestamp;
+    struct timeval time;
     int reference_counter;
     pthread_mutex_t counter_lock;
     list * sst_files[LEVELS];
@@ -42,7 +43,7 @@ typedef struct snapshot{
  * @brief Creates a new empty snapshot
  * @return Pointer to the newly created snapshot
  */
-snapshot * create_snap(void);
+snapshot * create_snap(int txn_id);
 
 /**
  * @brief Initializes a snapshot from a master snapshot

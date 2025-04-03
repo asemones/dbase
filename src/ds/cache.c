@@ -4,7 +4,7 @@
 cache_entry empty;
 static cache_entry create_cache_entry(size_t page_size, size_t num_keys, arena *a) {
     cache_entry entry;
-    entry.buf = create_buffer(page_size + OVER_FLOW_EXTRA);
+    entry.buf = NULL;
     entry.ar  = (k_v_arr*)arena_alloc(a, sizeof(k_v_arr));
     entry.ar->keys   = arena_alloc(a, num_keys * sizeof(db_unit));
     entry.ar->values = arena_alloc(a, num_keys * sizeof(db_unit));
@@ -13,7 +13,9 @@ static cache_entry create_cache_entry(size_t page_size, size_t num_keys, arena *
     entry.ref_count  = 0;
     return entry;
 }
-
+void back_cache(struct io_manager * m, cache * c){
+    
+}
 cache create_cache(size_t capacity, size_t page_size) {
     cache c;
     c.capacity     = capacity;
@@ -68,9 +70,9 @@ cache_entry retrieve_entry(cache *c, block_index *index, const char *file_name, 
     empty.buf = NULL;
     if (val) {
         size_t idx = (size_t)(uintptr_t)val;
-        pthread_mutex_lock(&c->c_lock);
+        //pthread_mutex_lock(&c->c_lock);
         c->ref_bits[idx] = 1;
-        pthread_mutex_unlock(&c->c_lock);
+        //pthread_mutex_unlock(&c->c_lock);
         cache_entry ce = c->frames[idx];
         return ce;
     }
@@ -82,10 +84,10 @@ cache_entry retrieve_entry(cache *c, block_index *index, const char *file_name, 
         fclose(sst_file);
         return empty;
     }
-    pthread_mutex_lock(&c->c_lock);
+    //pthread_mutex_lock(&c->c_lock);
     size_t idx = get_free_frame(c);
     byte_buffer * compression_buf = request_struct(c->compression_buffers);
-    pthread_mutex_unlock(&c->c_lock);
+    //pthread_mutex_unlock(&c->c_lock);
     cache_entry ce = c->frames[idx];
     byte_buffer *buffer = ce.buf;
     if (sst->compressed_len > 0 ){
@@ -107,7 +109,7 @@ cache_entry retrieve_entry(cache *c, block_index *index, const char *file_name, 
     else {
         buffer->utility_ptr = NULL;
     }
-    pthread_mutex_lock(&c->c_lock);
+    //pthread_mutex_lock(&c->c_lock);
     c->ref_bits[idx] = 1;
     return_struct(c->compression_buffers, compression_buf, &reset_buffer);
     if (buffer->utility_ptr) {
@@ -124,10 +126,10 @@ cache_entry retrieve_entry(cache *c, block_index *index, const char *file_name, 
         printf("Computed: %u, Original: %u, Match: %d\n", 
         computed_checksum, index->checksum, computed_checksum == index->checksum);
         fclose(sst_file);
-        pthread_mutex_unlock(&c->c_lock);
+        //pthread_mutex_unlock(&c->c_lock);
         return empty;
     }
-    pthread_mutex_unlock(&c->c_lock);
+    //pthread_mutex_unlock(&c->c_lock);
     load_block_into_into_ds(buffer, ce.ar, &into_array);
     fclose(sst_file);
     return ce;

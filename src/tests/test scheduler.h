@@ -52,7 +52,7 @@ void task_func_3(task_t * arg){
 void  * thread_func(void * arg){
       db_schedule * scheduler = arg;
       aco_t * main = aco_create(NULL, NULL, 0, NULL, NULL);
-      init_scheduler(scheduler,main, 400, 4096);
+      init_scheduler(scheduler,main, 400, 4096, NULL);
       add_task(task_func_1, MISC_COMPUTE,NULL, scheduler);
       add_task(task_func_2, MISC_COMPUTE,NULL, scheduler);
       add_task(NULL, TERMINATE_WAIT, NULL, scheduler);
@@ -63,7 +63,7 @@ void  * thread_func(void * arg){
 void * tasks_no_ret(void * arg){
       db_schedule * scheduler = arg;
       aco_t * main = aco_create(NULL, NULL, 0, NULL, NULL);
-      init_scheduler(scheduler,main, 400, 4096);
+      init_scheduler(scheduler,main, 400, 4096, NULL);
       add_task(task_func_1, MISC_COMPUTE,NULL, scheduler);
       add_task(task_func_2, MISC_COMPUTE, NULL, scheduler);
       add_task(NULL, TERMINATE_WAIT,NULL, scheduler);
@@ -73,7 +73,7 @@ void * tasks_no_ret(void * arg){
 typedef struct io_test_arg{
     struct io_manager * io_manager;
     db_schedule * scheduler;
-    struct io_request * pinned;
+    struct db_FILE * pinned;
 }io_test_arg;
 void callback(void * arg){
     task_t * task = arg;
@@ -110,7 +110,7 @@ void io_thrd_f(void * arg){
     const int len = 4096;
     for (int i = 0; i < a->scheduler->pool->capacity - 1; i++){
         io_test_arg * ar=  malloc(sizeof(*ar));
-        struct io_request * pinned = request_struct(a->io_manager->io_requests);
+        struct db_FILE * pinned = request_struct(a->io_manager->io_requests);
         ar->io_manager = a->io_manager;
         ar->scheduler = a->scheduler;
         ar->pinned = pinned;
@@ -138,7 +138,7 @@ void io_prep(struct io_manager * io_manager, int small, int fat){
     const int max_concurrent_ops = 40000;
     init_io_manager(io_manager, small, 0, 0, 0, 0);
     io_manager->io_requests = create_pool(max_concurrent_ops);
-    struct io_request * io= malloc(sizeof(struct io_request) * max_concurrent_ops);
+    struct db_FILE * io= malloc(sizeof(struct db_FILE) * max_concurrent_ops);
     for (int i = 0; i < max_concurrent_ops; i++){
         io[i].buf = request_struct(io_manager->four_kb);
         insert_struct(io_manager->io_requests, &io[i]);
@@ -155,7 +155,7 @@ void test_tasks_no_io(){
 void test_tasks_io(){
       db_schedule scheduler;
       aco_t * main = aco_create(NULL, NULL, 0, NULL, NULL);
-      init_scheduler(&scheduler,main, 40000, 512);
+      init_scheduler(&scheduler,main, 40000, 512, NULL);
       struct io_manager * io_mana = malloc(sizeof(*io_mana));
       io_prep(io_mana, 40000, 128);
       FILE * open = fopen("test.txt", "wb+");

@@ -62,7 +62,7 @@ void io_completion_callback(void *arg) {
     completion_tracker *tracker = (completion_tracker *)arg;
 
     tracker->completed = 1;
-    struct io_request *req = (struct io_request *)((char*)arg - offsetof(struct io_request, callback_arg));
+    struct db_FILE *req = (struct db_FILE *)((char*)arg - offsetof(struct db_FILE, callback_arg));
     if (req->response_code >= 0) {
         tracker->success = 1;
     }
@@ -134,8 +134,8 @@ void test_io_uring_write(void) {
     memcpy(buffer->buffy, test_data, data_len);
     buffer->curr_bytes = data_len;
     
-    // Prepare io_request
-    struct io_request req;
+    // Prepare db_FILE
+    struct db_FILE req;
     memset(&req, 0, sizeof(req));
     req.desc.fn = "test_io_uring_write.txt";
     req.op = WRITE;
@@ -208,7 +208,7 @@ void test_io_uring_read(void) {
     byte_buffer *buffer = request_struct(manager.four_kb);
    
    
-    struct io_request req;
+    struct db_FILE req;
     memset(&req, 0, sizeof(req));
     req.desc.fn = file_name;
     req.op = READ;
@@ -272,7 +272,7 @@ void test_async_io_with_event_loop(void) {
     const int num_ops = 5;
     const char *filenames[num_ops];
     completion_tracker trackers[num_ops];
-    struct io_request reqs[num_ops];
+    struct db_FILE reqs[num_ops];
     byte_buffer *buffers[num_ops];
     
     
@@ -294,7 +294,7 @@ void test_async_io_with_event_loop(void) {
         buffers[i]->curr_bytes = data_len;
         
     
-        memset(&reqs[i], 0, sizeof(struct io_request));
+        memset(&reqs[i], 0, sizeof(struct db_FILE));
         reqs[i].desc.fn = filename;
         reqs[i].op = WRITE;
         reqs[i].buf = buffers[i];
@@ -412,7 +412,7 @@ benchmark_result benchmark_write(size_t file_size, size_t block_size, int num_fi
  
     completion_tracker *trackers = malloc(num_files * sizeof(completion_tracker));
     byte_buffer **buffers = malloc(num_files * sizeof(byte_buffer*));
-    struct io_request *reqs = malloc(num_files * sizeof(struct io_request));
+    struct db_FILE *reqs = malloc(num_files * sizeof(struct db_FILE));
     
     for (int i = 0; i < num_files; i++) {
         init_completion_tracker(&trackers[i]);
@@ -424,7 +424,7 @@ benchmark_result benchmark_write(size_t file_size, size_t block_size, int num_fi
         char *filename = malloc(50);
         sprintf(filename, "bench_uring_%d.txt", i);
         
-        memset(&reqs[i], 0, sizeof(struct io_request));
+        memset(&reqs[i], 0, sizeof(struct db_FILE));
         reqs[i].desc.fn = filename;
         reqs[i].op = WRITE;
         reqs[i].buf = buffers[i];

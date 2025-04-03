@@ -12,6 +12,7 @@
 #include "../db/backend/key-value.h"
 #include "structure_pool.h"
 #include "../db/backend/compression.h"
+#include "../util/io.h"
 #pragma once
 
 /**

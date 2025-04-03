@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include "option.h"
 #include <pthread.h>
+#include "../../util/multitask.h"
+#include "../../util/io.h"
 /**
  * @brief Initializes and starts the database
  * Initializes all database components including:

@@ -11,6 +11,7 @@ void allocate_new_tasks(db_schedule * scheduler) {
     while(!task_q_is_full(scheduler->pool)){
         task_t* new_task = create_task(scheduler->main, scheduler->a, id, POOL_WAIT, SHARED_S_SIZE, scheduler->shared, aco_execute, NULL);
         new_task->active = scheduler->active;
+        new_task->scheduler = scheduler;
         task_q_enqueue(scheduler->pool, new_task);
         id++;
     }
@@ -33,8 +34,7 @@ task_t* create_task(aco_t* main, void * allocator, int id, enum task_type type, 
         // Handle allocation failure
         return NULL;
     }
-    
-    task->id = id;
+
     task->type = type;
     task->stat = NOT_START;
     task->ret = NULL;
@@ -70,7 +70,6 @@ void aco_execute(void) {
         task->real_task = NULL;
     }
 }
-
 void add_task(task_func func, enum task_type type, void * arg ,db_schedule* scheduler) {
     task_t* task;
     
@@ -82,10 +81,8 @@ void add_task(task_func func, enum task_type type, void * arg ,db_schedule* sche
     task->real_task = func;
     task->type = type;
     task->arg = arg;
-    task->active = scheduler->active;
     task_q_enqueue(scheduler->active, task);
     scheduler->ongoing_tasks ++;
-    pthread_cond_signal(&scheduler->new_task_sig);
 }    
 void freeze_scheduler(db_schedule* scheduler, int finish_tasks, struct io_uring  *ring){
     const int TERM_TASK = 1;
@@ -100,7 +97,7 @@ void freeze_scheduler(db_schedule* scheduler, int finish_tasks, struct io_uring 
             aco_resume(task->thread);
         }
         /*if the task enters io wait, drop from queue. its state is saved in an io_arg struct
-        connected to the io_request*/
+        connected to the db_FILE*/
         if (task->stat == IO_WAIT) {
             continue;
         }
@@ -148,7 +145,7 @@ void aco_schedule(db_schedule* scheduler, struct io_uring* ring) {
             aco_resume(task->thread);
         }
         /*if the task enters io wait, drop from queue. its state is saved in an io_arg struct
-        connected to the io_request*/
+        connected to the db_FILE*/
         if (task->stat == IO_WAIT) {
             continue;
         }
@@ -167,17 +164,15 @@ void aco_schedule(db_schedule* scheduler, struct io_uring* ring) {
     }
 }
 
-void init_scheduler(db_schedule* scheduler, aco_t* main_co, int pool_size, int stack_size) {
+void init_scheduler(db_schedule* scheduler, aco_t* main_co, int pool_size, int stack_size, void * io_manager) {
     const int arena_size = pool_size * 2.5 * sizeof(task_t);
     scheduler->active = task_q_create(pool_size);
     scheduler->pool = task_q_create(pool_size);
     scheduler->shared = aco_share_stack_new(stack_size);
     scheduler->main = main_co;
     scheduler->a = malloc_arena(arena_size);
-    
-    pthread_mutex_init(&scheduler->new_task_lock, NULL);
-    pthread_cond_init(&scheduler->new_task_sig, NULL);
     scheduler->ongoing_tasks = 0;
+    scheduler->io_manager = io_manager;
 }
 void cleanup_scheduler(db_schedule* scheduler) {
     task_t* task = NULL;
@@ -195,7 +190,5 @@ void cleanup_scheduler(db_schedule* scheduler) {
     task_q_destroy(scheduler->active);
     task_q_destroy(scheduler->pool);
     free_arena(scheduler->a);
-    
-    pthread_mutex_destroy(&scheduler->new_task_lock);
-    pthread_cond_destroy(&scheduler->new_task_sig);
 }
+

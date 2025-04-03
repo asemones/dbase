@@ -57,13 +57,13 @@ size_t clock_evict(cache *c) {
     }
 }
 
-static size_t get_free_frame(cache *c) {
+static inline size_t get_free_frame(cache *c) {
     if (c->filled_pages < c->max_pages) {
         return c->filled_pages++;
     }
     return clock_evict(c);
 }
-cache_entry retrieve_entry(cache *c, block_index *index, const char *file_name, sst_f_inf *sst) {
+cache_entry * retrieve_entry(cache *c, block_index *index, const char *file_name, sst_f_inf *sst) {
     void *val = get_v(c->map, index->uuid);
     empty.buf = NULL;
     if (val) {
@@ -71,7 +71,7 @@ cache_entry retrieve_entry(cache *c, block_index *index, const char *file_name, 
         pthread_mutex_lock(&c->c_lock);
         c->ref_bits[idx] = 1;
         pthread_mutex_unlock(&c->c_lock);
-        cache_entry ce = c->frames[idx];
+        cache_entry * ce = &c->frames[idx];
         return ce;
     }
     FILE *sst_file = fopen(file_name, "rb");
@@ -86,8 +86,8 @@ cache_entry retrieve_entry(cache *c, block_index *index, const char *file_name, 
     size_t idx = get_free_frame(c);
     byte_buffer * compression_buf = request_struct(c->compression_buffers);
     pthread_mutex_unlock(&c->c_lock);
-    cache_entry ce = c->frames[idx];
-    byte_buffer *buffer = ce.buf;
+    cache_entry * ce = &c->frames[idx];
+    byte_buffer *buffer = ce->buf;
     if (sst->compressed_len > 0 ){
         compression_buf->curr_bytes = read_wrapper(compression_buf->buffy, 1, index->len, sst_file);
     }
@@ -128,11 +128,10 @@ cache_entry retrieve_entry(cache *c, block_index *index, const char *file_name, 
         return empty;
     }
     pthread_mutex_unlock(&c->c_lock);
-    load_block_into_into_ds(buffer, ce.ar, &into_array);
+    load_block_into_into_ds(buffer, ce->ar, &into_array);
     fclose(sst_file);
     return ce;
 }
-
 void pin_page(cache_entry *c) {
     __sync_fetch_and_add(&c->ref_count, 1);
 }

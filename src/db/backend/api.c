@@ -10,7 +10,7 @@ char * get(storage_engine * engine, char * key){
 }
 int put(storage_engine * engine, db_unit key, db_unit value){
     return write_record(engine, key, value)
-}
+} 
 int del(storage_engine * engine, db_unit key){
     return write_record(engine, key,TOMB_STONE);
 }

@@ -2,15 +2,25 @@ implement the io-uring write engine
 implement scheduling with coroutines
 //complete both by march 31st, fully tested
 //do these first
-//maybe dont integrate 
+//finish at least basic txn stuff before integration
 
 txn stuff:
+
 proper read/write for txns, consistent etc
 properly check l_0 and l_1->l_7 for the correct keys + filter based on the isolation level 
 skiplist nodes need to use times or some sort of counting method (could use tx id + clever )
 skiplist nodes can store an array of the same keys with different verisons as a solution
 to mvcc
+
+add a way for txns to pin pages + memtables and "release" all resources on compeletion. Ideal
+for short running OR txns with a high degree of locality, with long ones making their own copies as to not clog up the buffer 
+manager
+
 properly pin pages, memtables etc
+SOLVED: let the user deal with it. multithreaded access is banned, so in theory values are returned and the
+user may decide what is best for their usecase, whether it be to pin memtables or copy values.
+
+
 properly scan memtables
 
 

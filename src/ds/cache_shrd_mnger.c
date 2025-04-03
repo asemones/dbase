@@ -34,7 +34,7 @@ static inline int route_req(char * uuid, int num_buckets, int len){
     uint64_t hash = djb2(uuid, len);
     return jump_consistent_hash(hash, num_buckets);
 }
-cache_entry  retrieve_entry_sharded(shard_controller controller, block_index * ind,  const char * f_n, sst_f_inf * sst){
+cache_entry  * retrieve_entry_sharded(shard_controller controller, block_index * ind,  const char * f_n, sst_f_inf * sst){
     int bucket = route_req(ind->uuid, controller.num_caches, UUID_LEN);
     return retrieve_entry(&controller.caches[bucket], ind, f_n, sst);
 }

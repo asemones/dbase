@@ -2,6 +2,7 @@
 #include "key-value.h"
 #include "snapshot.h"
 #include "lsm.h"
+#include "../../ds/cache.h"
 typedef enum  txn_op_type{
     NO_OP,
     READ,
@@ -32,6 +33,7 @@ typedef enum {
 typedef struct txn{
     list * ops;
     list * results;
+    list * pinned_pages;
     int id;
     snapshot * snapshot;
     txn_state state;

@@ -61,6 +61,7 @@ typedef struct mem_table{
     bool immutable;
     char *range[2];
     SkipList *skip;
+    int pinned;
 }mem_table;
 
 /**

@@ -15,42 +15,53 @@ void add_op(txn * to_add, db_unit *key, db_unit* value, txn_op_type op_t){
     op.type = op_t;
     insert(to_add->ops, &op);
 }
-char * scan_l_0_tx(sst_f_inf * ssts, const char * key, int max, struct timeval tx_timer){
+char * scan_l_0_tx(sst_f_inf * ssts, const char * key, int max, txn * tx){
     struct timeval newest;
+    struct timeval tx_timer = tx->snapshot->time;
     bool found = false;
     char * newest_key = NULL;
+    cache_entry  * to_pin = NULL;
     for (int i = 0 ; i < max; i++){
         bloom_filter * filter = ssts[i].filter;
         if (!check_bit(key, filter)) continue;
-        size_t index_block= find_block(sst, keyword);
+        size_t index_block= find_block(ssts[i], key);
         block_index * index = at(sst->block_indexs, index_block);
         
-        cache_entry c = retrieve_entry_sharded(engine->cach, index, sst->file_name, sst);
-        if (c.buf== NULL ){
+        cache_entry  * c = retrieve_entry_sharded(engine->cach, index, sst->file_name, sst);
+        if (c->buf== NULL ){
             engine->error_code = INVALID_DATA;
             return NULL;
         }
         int k_v_array_index = json_b_search(c.ar, key);
         if (k_v_array_index== -1) continue;
         if (found == false){
-            newest_key = c.ar->values[k_v_array_index].entry;  
+            newest_key = c->ar->values[k_v_array_index].entry;  
             newest = sst[i].time;  
+            found = true;
+            to_pin = c;
+            pin_page(to_pin)
         }
         /*fix/double check timer comps*/
         else if (compare_time_stamp(tx_timer, sst[i].time) > 0){
             continue;
         }
         else if (compare_time_stamp(newest, ssts[i].time) > 0){
-            newest_key = c.ar->values[k_v_array_index].entry;    
+            newest_key = c->ar->values[k_v_array_index].entry;    
             newest = sst[i].time;  
+            unpin_page(to_pin);
+            to_pin = c;
+            pin_page(to_pin);
         }
 
     }
+    if (newest_key == NULL) return NULL;
+    insert(tx->pinned_pages, to_pin);
     return newest_key;
 }
-char * disk_read_snap(snapshot * snap, const char * keyword, struct timeval tx_timer){ 
+char * disk_read_snap(snapshot * snap, const char * keyword,txn * tx){ 
     char * l_0_test;
-    if ((l_0_test = scan_l_0_tx(snap->sst_files[0]->arr,keyword, snap->sst_files[0]->len, tx_timer))){
+    struct timeval tx_timer = tx->snapshot->time;
+    if ((l_0_test = scan_l_0_tx(snap->sst_files[0]->arr,keyword, snap->sst_files[0]->len, tx))){
         return l_0_test;
     }
     for (int i= 1; i < MAX_LEVELS; i++){
@@ -69,14 +80,16 @@ char * disk_read_snap(snapshot * snap, const char * keyword, struct timeval tx_t
         size_t index_block= find_block(sst, keyword);
         block_index * index = at(sst->block_indexs, index_block);
         
-        cache_entry c = retrieve_entry_sharded(*snap->cache_ref, index, sst->file_name, sst);
-        if (c.buf== NULL ){
+        cache_entry * c = retrieve_entry_sharded(*snap->cache_ref, index, sst->file_name, sst);
+        if (c->buf== NULL ){
             return NULL;
         }
         int k_v_array_index = json_b_search(c.ar, keyword);
         if (k_v_array_index== -1) continue;
+        pin_page(c);
+        insert(tx->pinned_pages, c);
 
-        return  c.ar->values[k_v_array_index].entry;    
+        return  c->ar->values[k_v_array_index].entry;    
     }
     return NULL;
 }
@@ -91,23 +104,49 @@ char* read_record_snap_txn(storage_engine * engine, const char * keyword, snapsh
     if (entry== NULL) return disk_read_snap(s,keyword, tx->snapshot->time);
     return entry->value.entry; 
 }
-void execute_no_distr(storage_engine * e, txn * tx){
+void execute_no_distr(storage_engine * e, txn * tx, arena * a){
     txn_op * ops = tx->ops->arr;
     tx->state = TXN_ACTIVE;
     for (int i = 0; i < tx->ops->len; i++){
         union result result;
         switch (ops[i].type){
+            case NO_OP:
+                break;
             case READ:
                 result.resp_v = read_record_snap_txn();
+                if (a != NULL){
+                    char * temp = arena_alloc(a, result.resp_v.len);
+                    memcpy(temp,result.resp_v.entry, result.resp_v.len);
+                    result.resp_v.entry = temp;
+                }
                 break;
-            case WRITE:
+            case PUT:
                 result.error_code = write_record(e, ops[i].key, ops[i].value);
+                break;
+            case DELETE:
+                break;
+            case WRITE_BATCH:
+                result.error_code = write_batch(e, ops[i].key, ops[i].value);
                 break;
             default:
                 break;
         }
     }
 }
+void free_tx_resources(txn * tx){
+    for (int i = 0; i < tx->pinned_pages->len; i++){
+        cache_entry * pinned = at(tx->pinned_pages, i);
+        unpin_page(pinned);
+    }
+}
 void commit_instance(txn * tx){
     execute_no_distr(tx);
+}
+void rollback(txn * tx){
+    txn_op * ops = tx->ops->arr;
+    for (int i = 0; i < tx->ops->len; i++){
+        switch(ops->type){
+            case READ
+        }
+    }
 }

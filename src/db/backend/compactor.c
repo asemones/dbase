@@ -239,8 +239,8 @@ int merge_tables(byte_buffer *dest_buffer, byte_buffer * compression_buffer, com
     for (int i = 0; i < job->to_merge->len; i++) {
         sst_f_inf * sst = at(job->to_merge,i);
         init_sst_iter(&its[i], sst);
-        cache_entry ce = retrieve_entry_sharded(*c, its[i].cursor.index, sst->file_name, sst);
-        if (ce.buf == NULL){
+        cache_entry * ce = retrieve_entry_sharded(*c, its[i].cursor.index, sst->file_name, sst);
+        if (ce->buf == NULL){
             free(its);
             return INVALID_DATA;
         }

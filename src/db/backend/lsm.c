@@ -32,6 +32,7 @@ mem_table * create_table(){
     for(int i = 0 ; i < 2; i++){
         table->range[i] = NULL;
     }
+    table->pinned = 0;
     return table;
 }
 int restore_state(storage_engine * e ,int lost_tables){
@@ -174,7 +175,6 @@ size_t find_sst_file(list  *sst_files, size_t num_files, const char *key) {
             min_index = middle_index + 1;
         } 
         else {
-            
             max_index = middle_index;
         }
     }
@@ -215,8 +215,8 @@ char * scan_l_0(sst_f_inf * ssts, const char * key, int max){
         size_t index_block= find_block(sst, keyword);
         block_index * index = at(sst->block_indexs, index_block);
         
-        cache_entry c = retrieve_entry_sharded(engine->cach, index, sst->file_name, sst);
-        if (c.buf== NULL ){
+        cache_entry * c = retrieve_entry_sharded(engine->cach, index, sst->file_name, sst);
+        if (c->buf== NULL ){
             engine->error_code = INVALID_DATA;
             return NULL;
         }
@@ -256,8 +256,9 @@ char * disk_read(storage_engine * engine, const char * keyword){
         size_t index_block= find_block(sst, keyword);
         block_index * index = at(sst->block_indexs, index_block);
         
-        cache_entry c = retrieve_entry_sharded(engine->cach, index, sst->file_name, sst);
-        if (c.buf== NULL ){
+        cache_entry * c = retrieve_entry_sharded(engine->cach, index, sst->file_name, sst);
+        
+        if (c->buf== NULL ){
             engine->error_code = INVALID_DATA;
             return NULL;
         }
@@ -268,7 +269,6 @@ char * disk_read(storage_engine * engine, const char * keyword){
     }
     return NULL;
 }
-
 char* read_record(storage_engine * engine, const char * keyword){
     mem_table * table = at(engine->tables, engine->current_table);
     Node * entry= search_list(table->skip, keyword);

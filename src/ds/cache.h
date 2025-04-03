@@ -71,7 +71,7 @@ cache create_cache(size_t capacity, size_t page_size);
  * @param sst Pointer to the SST file info containing compression info
  * @return Pointer to the cache entry
  */
-cache_entry retrieve_entry(cache *c, block_index *index, const char *file_name, sst_f_inf *sst);
+cache_entry * retrieve_entry(cache *c, block_index *index, const char *file_name, sst_f_inf *sst);
 
 /**
  * @brief Pins a page in the cache to prevent eviction

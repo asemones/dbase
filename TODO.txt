@@ -27,3 +27,17 @@ properly scan memtables
 consider key-value seperation
 mirgrate db to use fancier comparisions
 cache line bloom filters
+merge codebase with new scheduler features
+
+requirements:
+1. change cache to the new model
+    since everything now needs to be alligned to 4kb pages even with compression, this presents 
+    a challenge. find a fix
+2. route all requests thru the io io_manager
+3. change compactor to function with new system 
+4. remove all old synchronization
+
+
+the way the db may be interacted with: compactor operations, read/write. api calls
+become tasks in the scheduler, and the compactor scheduler will just get ran with compactions then becoming
+subtasks.

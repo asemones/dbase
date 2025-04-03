@@ -1,4 +1,8 @@
-#include <stdatomic.h>
+#ifndef CIRCQ_H
+#define CIRCQ_H
+
+#include <stdio.h>
+#include <stdlib.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stddef.h> // For size_t
@@ -12,10 +16,8 @@ typedef struct { \
     _Atomic size_t tail; \
 } NAME; \
 \
-NAME* NAME##_create(int capacity_arg) { \
-    if (capacity_arg < 1) return NULL; \
-    size_t capacity = (size_t)capacity_arg; \
-    size_t buffer_size = capacity + 1; \
+/* Function to create a new circular queue with given capacity */ \
+static inline NAME* NAME##_create(int capacity) { \
     NAME* queue = (NAME*)malloc(sizeof(NAME)); \
     if (!queue) return NULL; \
     \
@@ -32,13 +34,25 @@ NAME* NAME##_create(int capacity_arg) { \
     return queue; \
 } \
 \
-bool NAME##_enqueue(NAME* queue, T item) { \
-    size_t current_head = atomic_load_explicit(&queue->head, memory_order_relaxed); \
-    size_t next_head = (current_head + 1) % queue->capacity; \
-    size_t current_tail = atomic_load_explicit(&queue->tail, memory_order_acquire); \
+ \
+static inline bool NAME##_is_full(NAME* queue) { \
+    return queue->size == queue->capacity; \
+} \
+\
+/* Function to check if the queue is empty */ \
+static inline bool NAME##_is_empty(NAME* queue) { \
+    return queue->size == 0; \
+} \
+\
+ \
+static inline bool NAME##_enqueue(NAME* queue, T item) { \
+    if (NAME##_is_full(queue)) { \
+        return false;  /* Queue overflow */ \
+    } \
     \
-    if (next_head == current_tail) { \
-        return false; \
+    /* If queue is initially empty */ \
+    if (queue->front == -1) { \
+        queue->front = 0; \
     } \
     \
     atomic_store_explicit(&queue->buffer[current_head], item, memory_order_relaxed); \
@@ -47,17 +61,31 @@ bool NAME##_enqueue(NAME* queue, T item) { \
     return true; \
 } \
 \
-bool NAME##_is_empty(NAME* queue) { \
-    size_t current_head = atomic_load_explicit(&queue->head, memory_order_acquire); \
-    size_t current_tail = atomic_load_explicit(&queue->tail, memory_order_acquire); \
-    return current_head == current_tail; \
+ \
+static inline bool NAME##_dequeue(NAME* queue, T* item) { \
+    if (NAME##_is_empty(queue)) { \
+        return false;  /* Queue underflow */ \
+    } \
+    \
+    *item = queue->array[queue->front]; \
+    \
+     \
+    if (queue->front == queue->rear) { \
+        queue->front = -1; \
+        queue->rear = -1; \
+    } \
+    else { \
+        \
+        queue->front = (queue->front + 1) % queue->capacity; \
+    } \
+    \
+    queue->size--; \
+    return true; \
 } \
 \
-bool NAME##_dequeue(NAME* queue, T* item_out) { \
-    size_t current_tail = atomic_load_explicit(&queue->tail, memory_order_relaxed); \
-    size_t current_head = atomic_load_explicit(&queue->head, memory_order_acquire); \
-    \
-    if (current_head == current_tail) { \
+ \
+static inline bool NAME##_peek(NAME* queue, T* item) { \
+    if (NAME##_is_empty(queue)) { \
         return false; \
     } \
     \
@@ -68,11 +96,15 @@ bool NAME##_dequeue(NAME* queue, T* item_out) { \
     return true; \
 } \
 \
-void NAME##_destroy(NAME* queue) { \
+ \
+static inline void NAME##_destroy(NAME* queue) { \
     if (queue) { \
         if (queue->buffer) { \
             free(queue->buffer); \
         } \
         free(queue); \
     } \
-}
+} \
+\
+
+#endif /* CIRCQ_H */

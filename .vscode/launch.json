@@ -1,0 +1,45 @@
+{
+    "version": "2.0.0",
+    "configurations": [
+      {
+        "name": "Debug Server",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/build/test",
+        "stopAtEntry": false,
+        "cwd": "${workspaceFolder}/",
+        "environment": [],
+        "externalConsole": false,
+        "MIMode": "gdb",
+        "miDebuggerPath": "/usr/bin/gdb",
+        "setupCommands": [
+          {
+            "description": "Enable pretty-printing for gdb",
+            "text": "-enable-pretty-printing",
+            "ignoreFailures": true
+          }
+        ]
+      },
+      {
+        "name": "Debug Client",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/Client/client",
+        "args": ["localhost", "42342"],
+        "stopAtEntry": false,
+        "cwd": "${workspaceFolder}/Client",
+        "environment": [],
+        "externalConsole": true,
+        "MIMode": "gdb",
+        "miDebuggerPath": "/usr/bin/gdb",
+        "setupCommands": [
+          {
+            "description": "Enable pretty-printing for gdb",
+            "text": "-enable-pretty-printing",
+            "ignoreFailures": true
+          }
+        ]
+      }
+    ]
+  }
+  

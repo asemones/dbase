@@ -15,10 +15,13 @@
 #include "../ds/structure_pool.h"
 #include "../ds/arena.h"
 #include <sys/resource.h>
+#include "multitask.h"
 
 #ifndef IO_H
 #define IO_H
-
+#define DEFAULT_READ_FLAGS (O_RDONLY | __O_DIRECT )
+#define DEFAULT_WRT_FLAGS (O_WRONLY | O_CREAT | O_APPEND)
+#define DEFAULT_PERMS (S_IRUSR  | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)
 enum operation{
     READ,
     WRITE,
@@ -27,56 +30,77 @@ enum operation{
 };
 typedef void (*aio_callback)(void *arg);
 /*since we want no memcpys, EVERY SINGLE buffer MUST be owned by the manager*/
-
+// Add to your header file
 struct io_manager{
+    int m_tbl_s;
+    int sst_tbl_s;
     struct_pool * sst_table_buffers;
     struct_pool * mem_table_buffers;
     struct_pool * four_kb;
     struct_pool * io_requests; // we keep these tasks heap allocated to mimimize the stack size
-    struct_pool * open_close_req;
     struct io_uring ring;
     arena a;
     int num_in_queue;
-    struct timeval val;
+    int total_buffers;
+    int num_segments;
+    struct iovec *iovecs;
 };
 union descriptor{
     uint64_t fd;
     char * fn;
 }; 
-struct io_request{
+/*one cache line!*/
+struct db_FILE{
     union descriptor desc; 
     int priority;
     off_t offset;
+    mode_t perms;
     size_t len;
+    int flags;
     aio_callback callback;
     void * callback_arg;
     enum operation op ;
     byte_buffer* buf;
     int response_code;
-}; 
-struct open_close_req{
-    union descriptor desc; 
-    enum operation op;
-    char * f_n;
-    int flags;
-    mode_t perm;
 };
-//typedef void (*aio_callback)(void * fd, void *arg);
-//typedef void (*aio_callback)(void * fd, void **arg);
-/*
-typedef struct event_loop {
-    int kq;
-    size_t max_events;
-    struct kevent *events;
-    int num_event;
-    atomic_bool running;
-    pthread_mutex_t queue_lock;
-    pthread_mutex_t add_lock;
-}event_loop;
-event_loop* create_loop(size_t size);
-//int add(eventLoop* loop, int fd, short filter, aio_callback* callback, void* userdata);
-void run_loop(event_loop * loop);
-*/
+
+inline struct db_FILE * dbio_open(char * file_name, char  mode, struct io_manager * manager){
+    struct db_FILE * req = request_struct(manager);
+    if (req == NULL) return NULL;
+
+    req->callback_arg = aco_get_arg(); /*task*/
+    if (mode == 'r'){
+        req->flags = DEFAULT_READ_FLAGS;
+    }
+    else{
+        req->flags = DEFAULT_WRT_FLAGS;
+    }
+    req->perms = DEFAULT_PERMS;
+    req->desc.fd = do_open(file_name, req,manager);
+    if (req->desc.fd < 0){
+        return_struct(manager->io_requests, req, NULL);
+        req = NULL;
+    }
+    return req;
+}
+inline void set_context_buffer(struct db_FILE * request, byte_buffer * buf){
+    request->buf = buf;
+}
+inline void  dbio_close(struct db_FILE * request, struct io_manager * manager){
+    do_close(request->desc.fd, request, manager);
+    return_struct(manager->io_requests, request, NULL);
+    request = NULL;
+}
+inline int dbio_write(struct db_FILE * request, off_t off, size_t len, struct io_manager * manager){
+    return do_write(request, off, len,manager);
+}
+inline int dbio_read(struct db_FILE * request, off_t off, size_t len, struct io_manager * manager){
+    return do_read(request, off, len,manager);
+}
+inline void dbio_fsync(struct db_FILE * request, struct io_manager * manager){
+    do_fsync(request->desc.fd, manager);
+}
+
 /**
  * @brief Wrapper function for fwrite
  * @param ptr Pointer to the data to be written
@@ -163,9 +187,8 @@ static inline long get_file_size(FILE *file) {
     return size;
 }
 void init_io_manager(struct io_manager * manage, int num_4kb, int num_sst_tble, int num_memtable, int sst_tbl_s, int mem_tbl_s);
-int chain_open_op_close(struct io_uring *ring, struct io_request * req);
-int add_open_close_requests(struct io_uring *ring, struct open_close_req requests, int seq);
-int add_read_write_requests(struct io_uring *ring, struct io_request * requests, int seq);
+int add_open_close_requests(struct io_uring *ring, struct db_FILE * requests, int seq);
+int add_read_write_requests(struct io_uring *ring, struct io_manager *manage, struct db_FILE *requests, int seq);
 int process_completions(struct io_uring *ring);
-
+int chain_open_op_close(struct io_uring *ring, struct io_manager * m, struct db_FILE * req);
 #endif

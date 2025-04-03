@@ -142,6 +142,7 @@ void test_io_uring_write(void) {
     req.buf = buffer;
     req.len = data_len;
     req.offset = 0;
+    
     int result;
     // Set up completion tracking
     completion_tracker tracker;
@@ -150,7 +151,7 @@ void test_io_uring_write(void) {
     req.callback_arg = &tracker;
     
     // Submit the write request
-    result = chain_open_op_close(&manager.ring, &req);
+    result = chain_open_op_close(&manager.ring, &manager, &req);
     TEST_ASSERT_EQUAL_INT(0, result);
     
     // Submit to the ring
@@ -222,7 +223,7 @@ void test_io_uring_read(void) {
     req.callback_arg = &tracker;
     
 
-    result = chain_open_op_close(&manager.ring, &req);
+    result = chain_open_op_close(&manager.ring,&manager, &req);
     TEST_ASSERT_EQUAL_INT(0, result);
     
     
@@ -298,7 +299,7 @@ void test_async_io_with_event_loop(void) {
         reqs[i].op = WRITE;
         reqs[i].buf = buffers[i];
         reqs[i].len = data_len;
-        reqs[i].offset = 0;
+        reqs[i].offset= 0;
         reqs[i].callback = io_completion_callback;
         reqs[i].callback_arg = &trackers[i];
     }
@@ -309,7 +310,7 @@ void test_async_io_with_event_loop(void) {
     
     
     for (int i = 0; i < num_ops; i++) {
-        int result = chain_open_op_close(&manager.ring, &reqs[i]);
+        int result = chain_open_op_close(&manager.ring,&manager, &reqs[i]);
         TEST_ASSERT_EQUAL_INT(0, result);
     }
     int res;
@@ -442,7 +443,7 @@ benchmark_result benchmark_write(size_t file_size, size_t block_size, int num_fi
     int total_submitted =0;
 
     for (int i = 0; i < num_files; i++) {
-        int l = chain_open_op_close(&manager.ring, &reqs[i]);
+        int l = chain_open_op_close(&manager.ring, &manager, &reqs[i]);
         if (l < 0) exit(EXIT_FAILURE);
         submitted += 3; 
 

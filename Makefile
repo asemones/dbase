@@ -13,10 +13,19 @@ SRCS += $(wildcard src/db/backend/dal/*.c)
 SRCS += src/tests/testrunner.c
 SRCS += src/tests/unity/src/unity.c
 SRCS += src/util/io.c
+SRCS += src/util/aco.c
+SRCS += src/util/multitask.c
+
+# Add assembly file
+ASM_SRCS := src/util/acosw.S
+ASM_OBJS := $(notdir $(ASM_SRCS))
+ASM_OBJS := $(ASM_OBJS:.S=.o)
+ASM_OBJS := $(addprefix $(OBJDIR)/,$(ASM_OBJS))
 
 OBJS   := $(notdir $(SRCS))
 OBJS   := $(OBJS:.c=.o)
 OBJS   := $(addprefix $(OBJDIR)/,$(OBJS))
+OBJS   += $(ASM_OBJS)
 
 all: $(TARGET)
 
@@ -31,6 +40,12 @@ $(OBJDIR)/%.o:
 	@mkdir -p $(OBJDIR)
 	@echo "Compiling $* -> $@"
 	$(CC) $(CFLAGS) -c $(call FIND_SRC,$*) -o $@
+
+# Rule for compiling assembly files
+$(OBJDIR)/acosw.o: src/util/acosw.S
+	@mkdir -p $(OBJDIR)
+	@echo "Assembling acosw.S -> $@"
+	$(CC) -c $< -o $@
 
 clean:
 	rm -rf $(OBJDIR)

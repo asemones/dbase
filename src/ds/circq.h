@@ -1,3 +1,6 @@
+#ifndef CIRCQ_H
+#define CIRCQ_H
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -15,7 +18,7 @@ typedef struct { \
 } NAME; \
 \
 /* Function to create a new circular queue with given capacity */ \
-NAME* NAME##_create(int capacity) { \
+static inline NAME* NAME##_create(int capacity) { \
     NAME* queue = (NAME*)malloc(sizeof(NAME)); \
     if (!queue) return NULL;   \
     \
@@ -34,17 +37,17 @@ NAME* NAME##_create(int capacity) { \
 } \
 \
  \
-bool NAME##_is_full(NAME* queue) { \
+static inline bool NAME##_is_full(NAME* queue) { \
     return queue->size == queue->capacity; \
 } \
 \
 /* Function to check if the queue is empty */ \
-bool NAME##_is_empty(NAME* queue) { \
+static inline bool NAME##_is_empty(NAME* queue) { \
     return queue->size == 0; \
 } \
 \
  \
-bool NAME##_enqueue(NAME* queue, T item) { \
+static inline bool NAME##_enqueue(NAME* queue, T item) { \
     if (NAME##_is_full(queue)) { \
         return false;  /* Queue overflow */ \
     } \
@@ -63,7 +66,7 @@ bool NAME##_enqueue(NAME* queue, T item) { \
 } \
 \
  \
-bool NAME##_dequeue(NAME* queue, T* item) { \
+static inline bool NAME##_dequeue(NAME* queue, T* item) { \
     if (NAME##_is_empty(queue)) { \
         return false;  /* Queue underflow */ \
     } \
@@ -85,7 +88,7 @@ bool NAME##_dequeue(NAME* queue, T* item) { \
 } \
 \
  \
-bool NAME##_peek(NAME* queue, T* item) { \
+static inline bool NAME##_peek(NAME* queue, T* item) { \
     if (NAME##_is_empty(queue)) { \
         return false; \
     } \
@@ -95,7 +98,7 @@ bool NAME##_peek(NAME* queue, T* item) { \
 } \
 \
  \
-void NAME##_destroy(NAME* queue) { \
+static inline void NAME##_destroy(NAME* queue) { \
     if (queue) { \
         if (queue->array) { \
             free(queue->array); \
@@ -104,3 +107,5 @@ void NAME##_destroy(NAME* queue) { \
     } \
 } \
 \
+
+#endif /* CIRCQ_H */

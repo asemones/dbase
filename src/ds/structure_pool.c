@@ -54,6 +54,22 @@ void * request_struct(struct_pool * pool){
     unlock(&pool->write_lock);
     return ret;
 }
+void * request_struct_idx(struct_pool * pool, size_t idx){
+    pool->free_list[idx] = false;
+    if ( pool->free_list[idx] ==false){
+        return NULL;
+    }
+    pool->free_list[idx] = false;
+    pool->size --;
+    return pool->pool[idx];
+}
+void return_struct_idx(struct_pool * pool, size_t idx){
+    if ( pool->free_list[idx] == true){
+        return;
+    }
+    pool->free_list[idx] = false;
+    pool->size ++;
+}
 void return_struct(struct_pool * pool, void * struct_ptr, void reset_func(void*)){
     lock(&pool->write_lock);
     for (size_t i = 0; i < pool->capacity; i++) {

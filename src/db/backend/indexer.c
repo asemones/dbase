@@ -40,6 +40,20 @@ sst_f_inf create_sst_filter(bloom_filter * b){
     return file;
 
 }
+bool use_compression(sst_f_inf * f){
+    return (f->compressed_len > 0 );
+}
+inline int num_blocks_in_pg(block_index * blocks){
+    int start= 0;
+    while(blocks[start].type != PHYSICAL_PAGE_HEADER){
+        start --;
+    }
+    int start_num = start;
+    while(blocks[start].type != PHYSICAL_PAGE_END){
+        start ++;
+    }
+    return (start - start_num + 1);
+}
 int sst_deep_copy(sst_f_inf * master, sst_f_inf * copy){
     if (master == NULL) return 0;
     memcpy(copy, master, sizeof(sst_f_inf));
@@ -58,6 +72,7 @@ int sst_deep_copy(sst_f_inf * master, sst_f_inf * copy){
         ind.len = master_b->len;
         ind.num_keys = master_b->num_keys;
         ind.offset = master_b->offset;
+        ind.type = master_b->type;
         memcpy(ind.min_key, master_b->min_key, 40);
         memcpy(ind.uuid,master_b->uuid, 32);
         ind.filter = deep_copy_bloom_filter(master->filter);
@@ -88,6 +103,7 @@ block_index * create_block_index(size_t est_num_keys){
     index->len = 0; 
     index->num_keys =0;
     index->uuid = NULL;
+    index->type = PHYSICAL_PAGE_HEADER;
     return index;
 }
 block_index create_ind_stack(size_t  est_num_keys){
@@ -95,8 +111,9 @@ block_index create_ind_stack(size_t  est_num_keys){
     index.filter = bloom(NUM_HASH_SST, est_num_keys, false, NULL);
     index.min_key = NULL;
     index.len = 0; 
-    index.num_keys  =0;
+    index.num_keys =0;
     index.uuid =  NULL;
+    index.type = PHYSICAL_PAGE_HEADER;
     return index;
 }
 block_index * block_from_stream(byte_buffer * stream, block_index * index){
@@ -110,6 +127,7 @@ block_index * block_from_stream(byte_buffer * stream, block_index * index){
     read_buffer(stream, &index->len, sizeof(size_t));
     read_buffer(stream, &index->num_keys, sizeof(index->num_keys));
     read_buffer(stream, &index->checksum, sizeof(index->checksum));
+    read_buffer(stream, &index->type, sizeof(index->type));
     return index;
 }
 int block_to_stream(byte_buffer * targ, block_index * index){
@@ -120,6 +138,7 @@ int block_to_stream(byte_buffer * targ, block_index * index){
     result = write_buffer(targ, (char*)&index->len, sizeof(size_t)); 
     result = write_buffer(targ, &index->num_keys, sizeof(&index->num_keys));
     result = write_buffer(targ, &index->checksum, sizeof(index->checksum));
+    result = write_buffer(targ, &index->type, sizeof(index->type));
     return result;
 }
 int read_index_block(sst_f_inf * file, byte_buffer * stream)
@@ -186,6 +205,7 @@ void reuse_block_index(void * b){
     index->min_key = NULL;
     index->len = 0;
     index->num_keys = 0;
+    index->type = PHYSICAL_PAGE_HEADER;
 }
 int cmp_sst_f_inf(void* one, void * two){
     sst_f_inf * info1 = one;
@@ -222,7 +242,7 @@ void generate_unique_sst_filename(char *buffer, size_t buffer_size, int level) {
     uint32_t r2 = (uint32_t)rand();
     uint64_t random_val = ((uint64_t)r1 << 32) | r2;
 
-    snprintf(buffer, buffer_size, "sst_%d_%ld_%ld_%016llx",
+    snprintf(buffer, buffer_size, "sst_%d_%ld_%ld_%016lx",
              level, tv.tv_sec, tv.tv_usec, random_val);
 }
 void build_index(sst_f_inf * sst, block_index * index, byte_buffer * b, size_t num_entries, size_t block_offsets){

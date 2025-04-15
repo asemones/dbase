@@ -5,7 +5,7 @@ struct db_FILE;
 /*REMEBR: need to allign*/
 /*design info:
 This is a generalized io_uring interface for disk and eventually network. O_Direct for io, 
-ZERO memcpy. Kernel polling in an event loop with callbacks for submitted tasks. priority based scheduling
+ZERO memcpy, dma, registered buffers. Kernel polling in an event loop with callbacks for submitted tasks. priority based scheduling
 . extenability for io statistics and rate limiting. single point of IO for majority of IO, excluding metadata reads at the 
 start-no need to overcomplicate. 
 */
@@ -118,7 +118,7 @@ void init_io_manager(struct io_manager * manage, int num_4kb, int num_sst_tble, 
     for (int i = 0 ; i < manage->total_buffers / 4 ; i++){
         struct db_FILE * re = calloc(sizeof(*re), 1);
         re->callback = NULL;
-        insert_struct(re, manage);       
+        insert_struct(manage->io_requests, re);       
     }
 
 }
@@ -158,6 +158,29 @@ int add_read_write_requests(struct io_uring *ring, struct io_manager *manage, st
     }
     return 0;
 }
+int process_completions(struct io_uring *ring) {
+    if (!ring) return 0;
+    
+    struct io_uring_cqe *cqes[DEPTH * 2]; 
+    int count = io_uring_peek_batch_cqe(ring, cqes, DEPTH * 2);
+    if (count <= 0) return 0;
+
+    for (int i = 0; i < count; i++) {
+        struct db_FILE *io = io_uring_cqe_get_data(cqes[i]);
+        if (!io) continue;
+
+        io->response_code = cqes[i]->res;
+        if (cqes[i]->res < 0) {
+            perror(strerror(cqes[i]->res));
+        }
+        if (io->callback) {
+            io->callback(io->callback_arg);
+        }
+    }
+
+    io_uring_cq_advance(ring, count);  // advance by actual batch count
+    return count;
+}
 void cleanup_io_uring(struct io_uring *ring) {
     io_uring_queue_exit(ring);
 }
@@ -184,44 +207,34 @@ int add_open_close_requests(struct io_uring *ring, struct db_FILE * requests, in
     }
     return 0;
 }
-int process_completions(struct io_uring *ring) {
-    if (!ring) return 0;
-    
-    struct io_uring_cqe *cqes[DEPTH * 2]; 
-    int count = io_uring_peek_batch_cqe(ring, cqes, DEPTH * 2);
-    if (count <= 0) return 0;
-
-    for (int i = 0; i < count; i++) {
-        struct db_FILE *io = io_uring_cqe_get_data(cqes[i]);
-        if (!io) continue;
-
-        io->response_code = cqes[i]->res;
-        if (cqes[i]->res < 0) {
-            perror(strerror(cqes[i]->res));
-        }
-        if (io->callback) {
-            io->callback(io->callback_arg);
-        }
-        else{
-            std_io_callback(io->callback_arg);
-        }
-        
-    }
-
-    io_uring_cq_advance(ring, count);  // advance by actual batch count
-    return count;
-}
-byte_buffer * select_buffer(struct io_manager * m, int size){
+byte_buffer * select_buffer(int size){
+    struct io_manager * m  = man;
     if (size <= 4 * 1024){
         return request_struct(m->four_kb);
     }
-    if (size < m->m_tbl_s){
-        return request_struct(m->m_tbl_s);
-    }
     if (size < m->sst_tbl_s){
-        return request_struct(m->sst_tbl_s);
+        return request_struct(m->sst_table_buffers);
+    }
+    if (size < m->m_tbl_s){
+        return request_struct(m->mem_table_buffers);
     }
     return NULL;
+}
+void return_buffer(byte_buffer * buff){
+    int size = buff->max_bytes;
+    struct io_manager * m  = man;
+    if (size <= 4 * 1024){
+        return_struct(man->four_kb, buff, &reset_buffer);
+        return;
+    }
+    if (size <= m->sst_tbl_s){
+        return_struct(m->sst_table_buffers, buff, &reset_buffer);
+        return;
+    }   
+    if (size <= m->m_tbl_s){
+       return_struct(man->mem_table_buffers, buff, &reset_buffer);
+       return;
+    }
 }
 int chain_open_op_close(struct io_uring *ring, struct io_manager * m, struct db_FILE * req){
     int r_w_flag = 0;
@@ -257,43 +270,70 @@ int chain_open_op_close(struct io_uring *ring, struct io_manager * m, struct db_
     if (res < 0) return -1;
     return 0;
 }
-void std_io_callback(void * arg){
-    task_t * task = arg;
-    task->stat = RUNNING;
-    task_q_enqueue(task->active, task);
-}
-inline int do_write(struct db_FILE * req, off_t offset, size_t len, struct io_manager * manager){
+int do_write(struct db_FILE * req, off_t offset, size_t len, struct io_manager * manager){
     req->op = WRITE;
     req->len = len;
     add_read_write_requests(&manager->ring,manager, req, 0);
-    yield();
+    aco_yield();
     return req->response_code;
 }
-inline int do_read(struct db_FILE * req, off_t offset, size_t len, struct io_manager * manager){   
+int do_read(struct db_FILE * req, off_t offset, size_t len, struct io_manager * manager){   
     req->len = len;
     req->op = READ;
     add_read_write_requests(&manager->ring,manager, req, 0);
-    yield();
+    aco_yield();
     return req->response_code;
 }
-inline int do_open(char * fn, struct db_FILE * req, struct io_manager * manager){
+int do_open(const char * fn, struct db_FILE * req, struct io_manager * manager){
     
     req->op = OPEN;
     add_open_close_requests(&manager->ring,req, 0);
-    yield();
+    aco_yield();
     return req->response_code;
 }
-inline int do_close(int fd, struct db_FILE * req, struct io_manager * manager){
+int do_close(int fd, struct db_FILE * req, struct io_manager * manager){
     
     req->op = CLOSE;
     add_open_close_requests(&manager->ring,req, 0);
-    yield();
+    aco_yield();
     return req->response_code;
 }
-inline int do_fsync(int fd, struct io_manager * manager){
+int do_fsync(int fd, struct io_manager * manager){
     add_fsync_request(&manager->ring,fd, 0);
-    yield();
+    aco_yield();
     return 0;
 }
+struct db_FILE * dbio_open(const char * file_name, char  mode){
+    struct db_FILE * req = request_struct(man->io_requests);
+    if (req == NULL) return NULL;
 
+    req->callback_arg = aco_get_arg(); /*task*/
+    if (mode == 'r'){
+        req->flags = DEFAULT_READ_FLAGS;
+    }
+    else{
+        req->flags = DEFAULT_WRT_FLAGS;
+    }
+    req->perms = DEFAULT_PERMS;
+    req->desc.fd = do_open(file_name, req,man);
+    if (req->desc.fd < 0){
+        return_struct(man->io_requests, req, NULL);
+        req = NULL;
+    }
+    return req;
+}
+void init_db_FILE_ctx(const int max_concurrent_ops, db_FILE * dbs){
+    for (int i = 0; i < max_concurrent_ops; i++){
+        insert_struct(man->io_requests, &dbs[i]);
+    }
+}
+void io_prep_in(struct io_manager * io_manager, int small, int max_concurrent_ops, int big_s, int huge_s, int num_huge, int num_big){
 
+    init_io_manager(io_manager, small,big_s, huge_s, num_big, num_huge);
+    io_manager->io_requests = create_pool(max_concurrent_ops);
+    struct db_FILE * io= malloc(sizeofdb_FILE () * max_concurrent_ops);
+    for (int i = 0; i < max_concurrent_ops; i++){
+        io[i].buf = request_struct(io_manager->four_kb);
+        insert_struct(io_manager->io_requests, &io[i]);
+    }
+}

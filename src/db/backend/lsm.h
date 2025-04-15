@@ -83,8 +83,6 @@ typedef struct storage_engine{
     struct_pool * write_pool;
     shard_controller cach;
     WAL * w;
-    pthread_cond_t * compactor_wait;
-    pthread_mutex_t * compactor_wait_mtx;
     bool * cm_ref;
     int error_code;
     int current_table;

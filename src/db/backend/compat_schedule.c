@@ -161,17 +161,11 @@ int start_jobs(compact_manager * cm){
 }
 void run_compactor(void * cm_thrd, void ** null_ret, thread * pool){
     compact_manager * cm = cm_thrd;
-    pthread_mutex_lock(cm->wait_mtx);
     int levels[LEVELS];
     struct timespec timer;
     timer.tv_sec = 1;
     timer.tv_nsec = 0;
     while(!cm->exit){
-        while(!cm->check_meta_cond){
-            int res = pthread_cond_timedwait(cm->wait, cm->wait_mtx, &timer);
-            if (res == ETIMEDOUT) break;
-        }
-        pthread_mutex_unlock(cm->wait_mtx);
         cm->check_meta_cond = false;
         if (cm->exit){
             break;

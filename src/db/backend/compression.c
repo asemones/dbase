@@ -1,6 +1,16 @@
 #include "compression.h"
 #include "indexer.h"
+#define ALIGN_UP(x, a) (((x) + ((a)-1)) & ~((a)-1))
+
 struct block_index;
+/*lazy*/
+static __thread byte_buffer * shared_temp_buffer = NULL;
+static const size_t BUFFER_SIZE = 64 * 1024; /*nobody should be using pages bigger*/
+
+ byte_buffer * get_temp_copy_buffer(){
+   shared_temp_buffer = create_buffer(BUFFER_SIZE);
+   return shared_temp_buffer;
+}
 void init_compress_tr_inf(compress_tr_inf * inf, byte_buffer * buffer, sst_cmpr_inf* sst){
     inf->curr_size = 0;
     inf->sizes = List(0, sizeof(size_t), false);
@@ -27,21 +37,43 @@ void into_dict_buffer( compress_tr_inf * inf, db_unit  key, db_unit  value){
     insert(inf->sizes, &real);
 }
 int compress_blocks(sst_f_inf * sst, byte_buffer * raw, byte_buffer * compressed){
+    int logical_page_tracker = 0;
+    byte_buffer * temp = get_temp_copy_buffer();
     for (int i = 0 ;i < sst->block_indexs->len; i++){
         block_index * block = at(sst->block_indexs,i);
         raw->read_pointer = block->offset;
         int new_offset = compressed->curr_bytes;
-        char * block_start = buf_ind(raw, block->offset);
         int res = -1;
         if (sst->use_dict_compression){
-            res = compress_dict(&sst->compr_info, raw, compressed, block->len);
+            res = compress_dict(&sst->compr_info, raw, temp, block->len);
         }
         if (res < 0){
-            regular_compress(&sst->compr_info, raw, compressed, block->len);
+            res = regular_compress(&sst->compr_info, raw, temp, block->len);
         }
+        int padding = 0;
+        /*we need to allign all compressed blocks to fit into a physical page size*/
+        if (check_for_lg_pg(logical_page_tracker, res, GLOB_OPTS.BLOCK_INDEX_SIZE)){  
+            int next_offset = compressed->curr_bytes + res;
+            new_offset = ALIGN_UP(next_offset, GLOB_OPTS.BLOCK_INDEX_SIZE);
+            padding = new_offset - next_offset;
+            logical_page_tracker = 0;
+            block_index * prev =  at(sst->block_indexs,i- 1);
+            if (prev){
+                prev->type = PHYSICAL_PAGE_END;
+            }
+        }
+        else{
+            block->type = MIDDLE;
+        }
+        /*add the new compressed len*/
+        logical_page_tracker += res;
+        write_buffer(compressed, temp->buffy, temp->curr_bytes);
+        padd_buffer(compressed, padding);
         block->offset = new_offset;
-        block->len = compressed->curr_bytes -block->offset;
+        block->len = res;
+        temp->curr_bytes = 0;
     }
+    return 0;
 }
 void prep_dict_compression(compress_tr_inf * inf, list * blocks, byte_buffer * input_buffer){
     db_unit key;
@@ -123,7 +155,8 @@ int decompress_dict(sst_cmpr_inf * sst,  byte_buffer * sst_stream, byte_buffer *
     if (sst->decompr_context == NULL){
         sst->decompr_context = ZSTD_createDCtx();
     }
-    size_t bytes = ZSTD_decompress_usingDDict(sst->decompr_context, dest->buffy, dest->max_bytes, sst_stream->buffy, size, sst->decompress_dict);
+    void * loc = get_curr(sst_stream);
+    size_t bytes = ZSTD_decompress_usingDDict(sst->decompr_context, dest->buffy, dest->max_bytes, loc, size, sst->decompress_dict);
     if (ZSTD_isError(bytes)) {
         printf("%s", ZSTD_getErrorName(bytes));
         ZSTD_getErrorName(bytes);
@@ -137,9 +170,8 @@ int regular_decompress(sst_cmpr_inf * sst,  byte_buffer * sst_stream, byte_buffe
     if (sst->decompr_context == NULL){
         sst->decompr_context = ZSTD_createDCtx();
     }
-    dest->buffy;
-    sst_stream->buffy;
-    size_t bytes= ZSTD_decompressDCtx(sst->decompr_context, dest->buffy, dest->max_bytes, sst_stream->buffy, size);
+    void * loc = get_curr(sst_stream);
+    size_t bytes= ZSTD_decompressDCtx(sst->decompr_context, dest->buffy, dest->max_bytes, loc, size);
     if (ZSTD_isError(bytes)) {
         printf("%s", ZSTD_getErrorName(bytes));
         ZSTD_getErrorName(bytes);
@@ -178,7 +210,9 @@ int handle_compression(sst_f_inf* inf, byte_buffer* input_buffer, byte_buffer* o
             inf->compr_info.dict_buffer = output_buffer->buffy; /*we use the output buffer so we dont need an ADDITIONAL buffer. Dict buffer is to store the dict friendly format of sst tables*/
             int sst_size = inf->length;
             int result = fill_dicts(&tr_inf, sst_size, blocks, input_buffer);
-
+            if (result != 0){
+                return result;
+            }
             free_list(tr_inf.sizes, NULL);
 
             reset_buffer(dict_buffer);
@@ -199,9 +233,11 @@ int handle_decompression(sst_f_inf* inf, byte_buffer* input_buffer, byte_buffer*
     if (inf == NULL || input_buffer == NULL || output_buffer == NULL) {
         return -1;
     }
+
     if (inf->use_dict_compression && inf->compr_info.decompress_dict != NULL) {
         return decompress_dict(&inf->compr_info, input_buffer, output_buffer, input_buffer->curr_bytes);
-    } else {
+    } 
+    else {
         return regular_decompress(&inf->compr_info, input_buffer, output_buffer, input_buffer->curr_bytes);
     }
 }

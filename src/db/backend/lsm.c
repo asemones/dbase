@@ -96,11 +96,7 @@ storage_engine * create_engine(char * file, char * bloom_file){
         the stray skipbufs inside this function skipbuf*/
     }
     engine->error_code = OK;
-    engine->compactor_wait = malloc(sizeof(pthread_cond_t));
-    engine->compactor_wait_mtx = malloc(sizeof(pthread_mutex_t));
     engine->cm_ref = NULL;
-    pthread_mutex_init(engine->compactor_wait_mtx, NULL);
-    pthread_cond_init(engine->compactor_wait, NULL);
     return engine;
 }
 int write_record(storage_engine* engine ,db_unit key, db_unit value){
@@ -342,18 +338,14 @@ int flush_all_tables(storage_engine * engine, int flush){
     return 0;
 }
 int flush_table(mem_table *table, storage_engine * engine){
-   
-   
-    
-    byte_buffer * buffer = request_struct(engine->write_pool);
-    byte_buffer* compressed_buffer = request_struct(engine->write_pool);
+
     meta_data * meta = engine->meta;
   
-
     sst_f_inf sst_s = create_sst_filter(table->filter);
     
 
     sst_f_inf * sst = &sst_s;
+    byte_buffer * buffer = select_buffer(sst->length);
     if (table->bytes <= 0) {
         printf("DEBUG: Table bytes <= 0, skipping flush\n");
         return_struct(engine->write_pool, buffer,&reset_buffer);
@@ -361,19 +353,11 @@ int flush_table(mem_table *table, storage_engine * engine){
     }
     seralize_table(table->skip, buffer, sst);
     sst->length = buffer->curr_bytes;
-    if (GLOB_OPTS.compress_level > -5){   
-        handle_compression(sst,buffer, compressed_buffer, NULL);
-        sst->compressed_len = compressed_buffer->curr_bytes;
-        return_struct(engine->write_pool, buffer, &reset_buffer);
-        buffer = compressed_buffer;
-        buffer->curr_bytes +=2;
-        sst->block_start = sst->compressed_len + 2;
-    }
-    else{
-        buffer->curr_bytes +=2;
-        sst->block_start = sst->length + 2;
-        sst->compressed_len = 0;
-    }
+    
+    buffer->curr_bytes +=2;
+    sst->block_start = sst->length + 2;
+    sst->compressed_len = 0;
+
     meta->db_length+= buffer->curr_bytes;
     all_index_stream(sst->block_indexs->len, buffer, sst->block_indexs);
     copy_filter(sst->filter, buffer);
@@ -381,23 +365,25 @@ int flush_table(mem_table *table, storage_engine * engine){
     
     sst->use_dict_compression = false;
 
-    if (compressed_buffer == NULL) {
-        return_struct(engine->write_pool, buffer, &reset_buffer);
+    db_FILE * sst_f = dbio_open(sst->file_name, 'w');
+    set_context_buffer(sst_f, buffer);
+    
+    size_t bytes = dbio_write(sst_f, 0, sst->length);
+    if (bytes < sst->length){
         return -1;
     }
-    FILE * sst_f = fopen(sst->file_name, "wb");
-    
-    write_wrapper(buffer->buffy, sizeof(unsigned char), buffer->curr_bytes, sst_f);
-    return_struct(engine->write_pool, buffer, &reset_buffer);
-    fflush(sst_f);
-    fsync(sst_f->_fileno);
+    dbio_fsync(sst_f);
+
     meta->num_sst_file ++;
     insert(meta->sst_files[0], sst);
     /*now a "used table"*/
     table->bytes = 0;
   
     if (engine->cm_ref!= NULL) *engine->cm_ref = true;
-    pthread_cond_signal(engine->compactor_wait);
+
+    dbio_close(sst_f);
+    return_buffer(buffer);
+
     return 0;
 
 }
@@ -430,10 +416,6 @@ void free_engine(storage_engine * engine, char* meta_file,  char * bloom_file){
     kill_WAL(engine->w, request_struct(engine->write_pool));
     free_pool(engine->write_pool, &free_buffer);
     free_shard_controller(&engine->cach);
-    pthread_mutex_destroy(engine->compactor_wait_mtx);
-    pthread_cond_destroy(engine->compactor_wait);
-    free(engine->compactor_wait);
-    free(engine->compactor_wait_mtx);
     free(engine);
     engine = NULL;
 }

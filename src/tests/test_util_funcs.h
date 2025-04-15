@@ -110,7 +110,7 @@ storage_engine * create_messy_db(){
     create_a_babybase();
     storage_engine * l = create_engine("meta.bin", "bloom.bin");
     compact_manager* cm = init_cm(l->meta, &l->cach);
-    sst_f_inf * victim = at(cm->sst_files[0], 0);
+    // Removed unused variable: sst_f_inf * victim = at(cm->sst_files[0], 0);
     for (int i = 6000; i < 9000; i++) {
         char *key = (char*)wrapper_alloc(60, NULL, NULL);
         char *value = (char*)wrapper_alloc(60, NULL, NULL);

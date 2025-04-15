@@ -440,7 +440,7 @@ benchmark_result benchmark_write(size_t file_size, size_t block_size, int num_fi
     int total_ops = num_files * 3; // Assuming each file has open + close
     int submitted = 0;
     int completed = 0;
-    int total_submitted =0;
+
 
     for (int i = 0; i < num_files; i++) {
         int l = chain_open_op_close(&manager.ring, &manager, &reqs[i]);
@@ -449,7 +449,7 @@ benchmark_result benchmark_write(size_t file_size, size_t block_size, int num_fi
 
             if (submitted >= 55 || i == num_files - 1) {
                 int ret = io_uring_submit(&manager.ring);
-                total_submitted +=ret; 
+    
                 if (ret < 0) {
                     fprintf(stderr, "io_uring_submit error: %s\n", strerror(-ret));
                     break;

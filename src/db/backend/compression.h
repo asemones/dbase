@@ -5,6 +5,7 @@
 #include "../../ds/list.h"
 #include <stdint.h>
 #include <stdbool.h>
+#include <pthread.h>
 #define MAX_SAMPLE 128
 #pragma once
 typedef struct block_index block_index;
@@ -169,3 +170,6 @@ int handle_compression(sst_f_inf* inf, byte_buffer* input_buffer, byte_buffer* o
  */
 int handle_decompression(sst_f_inf* inf, byte_buffer* input_buffer, byte_buffer* output_buffer);
 int load_dicts(sst_cmpr_inf * sst, int compression_level, void * buffer, FILE * file);
+static inline bool check_for_lg_pg(int curr_pg_size, int len, int max_pg_size){
+    return (curr_pg_size + len  > max_pg_size);
+}

@@ -63,6 +63,7 @@ void return_struct(struct_pool * pool, void * struct_ptr, void reset_func(void *
  * @return NULL
  */
 struct_pool * free_pool(struct_pool * pool, void free_func(void *));
-
+void return_struct_idx(struct_pool * pool, size_t idx);
+void * request_struct_idx(struct_pool * pool, size_t idx);
 
 #endif

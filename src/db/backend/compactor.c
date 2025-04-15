@@ -62,35 +62,20 @@ compact_manager * init_cm(meta_data * meta, shard_controller * c){
         insert_struct(manager->arena_pool, calloc_arena(1*MB));
     }
     manager->dict_buffer_pool = create_pool(NUM_PAGE_BUFFERS);
-    int divsor = GLOB_OPTS.dict_size_ratio > 0 ? GLOB_OPTS.dict_size_ratio : 1;
     for (int i = 0; i < NUM_PAGE_BUFFERS; i++){
         insert_struct(manager->dict_buffer_pool, create_buffer(GLOB_OPTS.SST_TABLE_SIZE* 1.1));
     }
-    manager->big_buffer_pool = create_pool(NUM_BIG_BUFFERS);
-    for (int i = 0; i < NUM_BIG_BUFFERS ; i++)
-    {
-        insert_struct(manager->big_buffer_pool, create_buffer(MB));
-    }
-    
-    // Create compression buffer pool
-    manager->compression_buffer_pool = create_pool(NUM_PAGE_BUFFERS);
-    int bufsize = GLOB_OPTS.SST_TABLE_SIZE * 1.1;
-    for (int i = 0; i < NUM_PAGE_BUFFERS; i++) {
-        insert_struct(manager->compression_buffer_pool, create_buffer(bufsize));
-    }
-    
     manager->c = c;
-    if (manager->compact_pool == NULL  || manager->arena_pool == NULL || manager->big_buffer_pool == NULL ||
-        manager->dict_buffer_pool == NULL || manager->compression_buffer_pool == NULL){
+    if (manager->compact_pool == NULL  || manager->arena_pool == NULL ||
+        manager->dict_buffer_pool == NULL){
         return NULL;
     }
     manager->job_queue = Frontier(sizeof(compact_job_internal), false, &compare_jobs);
-    pthread_mutex_init(&manager->compact_lock, NULL);
+
     manager->check_meta_cond = false;
     manager->exit = false;
     manager->lvl0_job_running= false;
-    pthread_mutex_init(&manager->resource_lock, NULL);
-    pthread_cond_init(&manager->resource_sig, NULL);
+   
     return manager;
 }
 
@@ -145,7 +130,7 @@ void reset_block_counters(int *block_b_count, int *sst_b_count){
     *block_b_count = 2;
     *sst_b_count +=2;
 }
-int write_blocks_to_file(byte_buffer *dest_buffer, byte_buffer * compression, byte_buffer * dict_buffer, sst_f_inf* curr_sst, list * entrys, FILE *curr_file) {
+int write_blocks_to_file(byte_buffer *dest_buffer, byte_buffer * compression, byte_buffer * dict_buffer, sst_f_inf* curr_sst, list * entrys, db_FILE *curr_file) {
     int keys = 0;
     int skipped = 0;
     if (compression->max_bytes < GLOB_OPTS.SST_TABLE_SIZE){
@@ -189,14 +174,14 @@ int write_blocks_to_file(byte_buffer *dest_buffer, byte_buffer * compression, by
     if (compress){
         handle_compression(curr_sst, dest_buffer, compression,dict_buffer);
         curr_sst->compressed_len = compression->curr_bytes;
-        write_wrapper(compression->buffy, compression->curr_bytes, 1, curr_file);
+        dbio_write(curr_file, 0, compression->curr_bytes);
         curr_sst->block_start = curr_sst->compressed_len;
     }
     else{
-        write_wrapper(dest_buffer->buffy, dest_buffer->curr_bytes, 1, curr_file);
+        dbio_write(curr_file, 0, dest_buffer->curr_bytes);
     }
-    fflush(curr_file);
-    fsync(curr_file->_fileno);
+    dbio_fsync(curr_file);
+    dbio_close(curr_file);
     return skipped;
 }
 void process_sst(byte_buffer *dest_buffer, sst_f_inf *curr_sst, FILE *curr_file, compact_job_internal*job, int sst_b_count) {
@@ -266,8 +251,9 @@ int merge_tables(byte_buffer *dest_buffer, byte_buffer * compression_buffer, com
     generate_unique_sst_filename(curr_sst.file_name, MAX_F_N_SIZE, job->end_level);
     curr_sst.block_start = GLOB_OPTS.SST_TABLE_SIZE;
 
-    FILE * curr_file = fopen(curr_sst.file_name, "wb");
+    db_FILE * curr_file = dbio_open(curr_sst.file_name, 'w');
     if (curr_file == NULL) return FAILED_OPEN;
+    
 
     block_index current_block = init_block(curr_sst.mem_store, &sst_offset_tracker);
     //sst_offset_tracker = 0;
@@ -319,7 +305,7 @@ int merge_tables(byte_buffer *dest_buffer, byte_buffer * compression_buffer, com
             sst_offset_tracker = 0;
 
             generate_unique_sst_filename(curr_sst.file_name, MAX_F_N_SIZE, job->end_level);
-            curr_file = fopen(curr_sst.file_name, "wb");
+            curr_file = dbio_open(curr_sst.file_name, 'w');
             if (curr_file == NULL) return FAILED_OPEN;
             current_block = init_block(curr_sst.mem_store, &sst_offset_tracker);
         }
@@ -337,18 +323,16 @@ int merge_tables(byte_buffer *dest_buffer, byte_buffer * compression_buffer, com
         complete_block(&curr_sst, &current_block, block_b_count);
         reset_block_counters(&block_b_count, &sst_b_count);
     }
-  
     if (entrys->len > 0) {
-            write_blocks_to_file(dest_buffer,compression_buffer,dict_buffer, &curr_sst, entrys, curr_file);
-            merge_data * max = get_last(entrys);
-            memcpy(curr_sst.max, max->key->entry, max->key->len);
-            process_sst(dest_buffer, &curr_sst, curr_file, job, sst_b_count);
+        write_blocks_to_file(dest_buffer,compression_buffer,dict_buffer, &curr_sst, entrys, curr_file);
+        merge_data * max = get_last(entrys);
+        memcpy(curr_sst.max, max->key->entry, max->key->len);
+        process_sst(dest_buffer, &curr_sst, curr_file, job, sst_b_count);
     }
-  
-
     free_front(pq);
     free_list(entrys, NULL);
     free(its);
+    dbio_close(curr_file);
     return 0; //INVALID_DATA is 0 so default is 1 
 }
 
@@ -375,28 +359,25 @@ void reset_ci(void * ci){
 }
 /*removes the sst when target is actually the same pointer*/
 int remove_same_sst(sst_f_inf * target, list * target_lvl, int level){
-    pthread_mutex_lock(&target_lvl->write_lock);
+
     char * key_to_check = target->file_name;
     int ind;
     /*level 0 has no gurantee of ordering*/
     
     ind = find_sst_file_eq_iter(target_lvl, target_lvl->len, key_to_check);
-    
 
     
     if (ind < 0) {
-        pthread_mutex_unlock(&target_lvl->write_lock);
         return ind;
     }
     sst_f_inf * candiate = internal_at_unlocked(target_lvl, ind);
     if (!sst_equals(candiate, target)){
-        pthread_mutex_unlock(&target_lvl->write_lock);
         return -1;
     } /*we compare the block index lists because that is a pointer. since we are dealing with structs, we cannot just compare the structs, as they may differ */
     fprintf(stdout, "removed %s in a trival move\n", candiate->file_name);
     memset(candiate, 0, sizeof(*candiate));
     remove_at_unlocked(target_lvl,  ind);
-    pthread_mutex_unlock(&target_lvl->write_lock);
+
     return 0;
 }
 
@@ -411,19 +392,19 @@ int remove_sst_from_list(sst_f_inf * target, list * target_lvl, int level){
     ind = find_sst_file_eq_iter(target_lvl, target_lvl->len, key_to_check);
   
     if (ind < 0) {
-        pthread_mutex_unlock(&target_lvl->write_lock);
+   
         return ind;
     }
     sst_f_inf * candiate = internal_at_unlocked(target_lvl, ind);
     if (!sst_equals(candiate, target)){
-        pthread_mutex_unlock(&target_lvl->write_lock);
+      
         return -1;
     } /*we compare the block index lists because that is a pointer. since we are dealing with structs, we cannot just compare the structs, as they may differ */
     if (!candiate->marked) remove(candiate->file_name);
     fprintf(stdout, "removed %s\n", candiate->file_name);
     free_sst_inf(candiate);
     remove_at_unlocked(target_lvl,  ind);
-    pthread_mutex_unlock(&target_lvl->write_lock);
+  
     return 0;
 }
 
@@ -453,20 +434,15 @@ void compact_one_table(compact_manager * cm, compact_job_internal job,  sst_f_in
 
     }
    
-    pthread_mutex_lock(&cm->resource_lock);
-    while (cm->arena_pool->size <=0 || cm->big_buffer_pool->size <=0){
-        pthread_cond_wait(&cm->resource_sig, &cm->resource_lock);
-    }
     byte_buffer* dict_buffer = request_struct(cm->dict_buffer_pool);
-    byte_buffer * dest_buffer = request_struct(cm->big_buffer_pool);
-    byte_buffer * compression_buffer=  request_struct(cm->compression_buffer_pool);
-    pthread_mutex_unlock(&cm->resource_lock);
+    byte_buffer * dest_buffer = select_buffer(GLOB_OPTS.SST_TABLE_SIZE);
+    byte_buffer * compression_buffer=  select_buffer(GLOB_OPTS.SST_TABLE_SIZE);
     int result = merge_tables (dest_buffer,compression_buffer, &job, dict_buffer, cm->c);
     if (result == INVALID_DATA){
-        return_struct(cm->big_buffer_pool, dest_buffer, &reset_buffer);
         return_struct(cm->dict_buffer_pool, dict_buffer, &reset_buffer);
-        return_struct(cm->compression_buffer_pool, compression_buffer, &reset_buffer);
-        pthread_cond_signal(&cm->resource_sig);
+        return_buffer(dest_buffer);
+        return_buffer(compression_buffer);
+
         if(job.start_level == 0){
             cm->lvl0_job_running = false;
         }
@@ -476,19 +452,17 @@ void compact_one_table(compact_manager * cm, compact_job_internal job,  sst_f_in
     integrate_new_tables(cm, &job, ssts_to_merge);
     free_list(ssts_to_merge, NULL);
 
-    pthread_mutex_lock(&cm->resource_lock);
+ 
     return_struct(cm->dict_buffer_pool, dict_buffer, &reset_buffer);
-    return_struct(cm->big_buffer_pool, dest_buffer, &reset_buffer);
-    return_struct(cm->compression_buffer_pool, compression_buffer, &reset_buffer);
-    pthread_cond_signal(&cm->resource_sig);
-    pthread_mutex_unlock(&cm->resource_lock);
+    return_buffer(dest_buffer);
+    return_buffer(compression_buffer);
+
     if(job.start_level == 0){
         cm->lvl0_job_running = false;
     }
     return;
 }
 void integrate_new_tables(compact_manager *cm, compact_job_internal *job, list *old_ssts) {
-    pthread_mutex_lock(&cm->compact_lock);
 
     list *start_level = cm->sst_files[job->start_level];
     list *search_level = cm->sst_files[job->search_level];
@@ -515,7 +489,6 @@ void integrate_new_tables(compact_manager *cm, compact_job_internal *job, list *
 
     free_list(job->new_sst_files, NULL);
     
-    pthread_mutex_unlock(&cm->compact_lock);
     return;
 }
 void free_ci(void * ci){
@@ -527,7 +500,6 @@ void free_ci(void * ci){
 void shutdown_cm(compact_manager * cm){
     cm->exit = true;
     cm->check_meta_cond = true;
-    pthread_cond_signal(cm->wait);
 }
 void free_cm(compact_manager * manager){
     for (int i = 0; i < NUM_THREADP; i++){
@@ -536,12 +508,7 @@ void free_cm(compact_manager * manager){
     free_pool(manager->compact_pool, &free_ci);
     free_pool(manager->arena_pool, &free_arena);
     free_pool(manager->dict_buffer_pool, &free_buffer);
-    free_pool(manager->big_buffer_pool, &free_buffer);
-    free_pool(manager->compression_buffer_pool, &free_buffer);
     free_front(manager->job_queue);
-    pthread_mutex_destroy(&manager->compact_lock);
-    pthread_mutex_destroy(&manager->resource_lock);
-    pthread_cond_destroy(&manager->resource_sig);
     free(manager);
     manager = NULL;
 }

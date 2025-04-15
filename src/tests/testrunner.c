@@ -65,8 +65,8 @@ int main(void) {
     RUN_TEST(test_null_and_empty_url);
     RUN_TEST(test_dumpFilter);
     fprintf(stderr, "RUNNING MULTI TASK TESTS\n");
-    RUN_TEST(test_tasks_no_io);
-    RUN_TEST(test_tasks_io);
+    RUN_TEST(test_framework_base);
+    RUN_TEST(test_framework_main);
     fprintf(stderr, "RUNNING IO TESTS\n");
     RUN_TEST(test_writeFile);
     RUN_TEST(test_readFile);

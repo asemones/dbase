@@ -1,6 +1,8 @@
 #include "cache_shrd_mnger.h"
 #include <stdlib.h>
 #define UUID_LEN 36
+#define FIRST_CACHE 0
+#define SECOND_CACHE 1
 shard_controller create_shard_controller(int num_caches, int shrd_cap,  int pg_size) {
     shard_controller controller;
     controller.num_caches = num_caches;
@@ -36,7 +38,7 @@ static inline int route_req(char * uuid, int num_buckets, int len){
 }
 cache_entry  retrieve_entry_sharded(shard_controller controller, block_index * ind,  const char * f_n, sst_f_inf * sst){
     int bucket = route_req(ind->uuid, controller.num_caches, UUID_LEN);
-    return retrieve_entry(&controller.caches[bucket], ind, f_n, sst);
+    return retrieve_entry_no_prefetch(&controller.caches[bucket], ind, f_n, sst);
 }
 void free_shard_controller(shard_controller *controller) {
     if (controller == NULL || controller->caches == NULL) {
@@ -46,4 +48,8 @@ void free_shard_controller(shard_controller *controller) {
         free_cache(&controller->caches[i]);
     }
     free(controller->caches);
+}
+cache * get_raw_cache(shard_controller controller){
+    
+    return &controller.caches[FIRST_CACHE];
 }

@@ -21,9 +21,7 @@ void prep_test(){
     engine = create_engine(GLOB_OPTS.META_F_N, GLOB_OPTS.BLOOM_F_N);
     cm = init_cm(engine->meta, &engine->cach);
     engine->cm_ref = &cm->check_meta_cond;
-    cm->wait = engine->compactor_wait;
-    cm->wait_mtx = engine->compactor_wait_mtx;
-
+   
     thread_p * thrd = thread_Pool(3, 0);
     int priority=  1;
     add_work(thrd, &run_compactor, cm, NULL, &priority);

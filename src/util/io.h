@@ -15,13 +15,15 @@
 #include "../ds/structure_pool.h"
 #include "../ds/arena.h"
 #include <sys/resource.h>
-#include "multitask.h"
+#include "aco.h"
+
 
 #ifndef IO_H
 #define IO_H
 #define DEFAULT_READ_FLAGS (O_RDONLY | __O_DIRECT )
 #define DEFAULT_WRT_FLAGS (O_WRONLY | O_CREAT | O_APPEND)
 #define DEFAULT_PERMS (S_IRUSR  | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)
+
 enum operation{
     READ,
     WRITE,
@@ -29,6 +31,7 @@ enum operation{
     CLOSE,
 };
 typedef void (*aio_callback)(void *arg);
+
 /*since we want no memcpys, EVERY SINGLE buffer MUST be owned by the manager*/
 // Add to your header file
 struct io_manager{
@@ -45,12 +48,13 @@ struct io_manager{
     int num_segments;
     struct iovec *iovecs;
 };
+__thread static struct io_manager * man;
 union descriptor{
     uint64_t fd;
     char * fn;
 }; 
 /*one cache line!*/
-struct db_FILE{
+typedef struct db_FILE {
     union descriptor desc; 
     int priority;
     off_t offset;
@@ -58,48 +62,38 @@ struct db_FILE{
     size_t len;
     int flags;
     aio_callback callback;
-    void * callback_arg;
-    enum operation op ;
+    void *callback_arg;
+    enum operation op;
     byte_buffer* buf;
     int response_code;
-};
-
-inline struct db_FILE * dbio_open(char * file_name, char  mode, struct io_manager * manager){
-    struct db_FILE * req = request_struct(manager);
-    if (req == NULL) return NULL;
-
-    req->callback_arg = aco_get_arg(); /*task*/
-    if (mode == 'r'){
-        req->flags = DEFAULT_READ_FLAGS;
-    }
-    else{
-        req->flags = DEFAULT_WRT_FLAGS;
-    }
-    req->perms = DEFAULT_PERMS;
-    req->desc.fd = do_open(file_name, req,manager);
-    if (req->desc.fd < 0){
-        return_struct(manager->io_requests, req, NULL);
-        req = NULL;
-    }
-    return req;
-}
-inline void set_context_buffer(struct db_FILE * request, byte_buffer * buf){
-    request->buf = buf;
-}
-inline void  dbio_close(struct db_FILE * request, struct io_manager * manager){
-    do_close(request->desc.fd, request, manager);
-    return_struct(manager->io_requests, request, NULL);
+}db_FILE;
+int do_open(const char * fn, struct db_FILE * req, struct io_manager * manager);
+int do_read(struct db_FILE * req, off_t offset, size_t len, struct io_manager * manager);
+int do_write(struct db_FILE * req, off_t offset, size_t len, struct io_manager * manager);
+int do_close(int fd, struct db_FILE * req, struct io_manager * manager);
+int do_fsync(int fd, struct io_manager * manager);
+static inline void  dbio_close(struct db_FILE * request){
+    do_close(request->desc.fd, request, man);
+    return_struct(man->io_requests, request, NULL);
     request = NULL;
 }
-inline int dbio_write(struct db_FILE * request, off_t off, size_t len, struct io_manager * manager){
-    return do_write(request, off, len,manager);
+static inline int dbio_write(struct db_FILE * request, off_t off, size_t len){
+    return do_write(request, off, len,man);
 }
-inline int dbio_read(struct db_FILE * request, off_t off, size_t len, struct io_manager * manager){
-    return do_read(request, off, len,manager);
+static inline int dbio_read(struct db_FILE * request, off_t off, size_t len){
+    return do_read(request, off, len,man);
 }
-inline void dbio_fsync(struct db_FILE * request, struct io_manager * manager){
-    do_fsync(request->desc.fd, manager);
+static inline void dbio_fsync(struct db_FILE * request){
+    do_fsync(request->desc.fd, man);
 }
+static inline size_t sizeofdb_FILE(){
+    return sizeof(db_FILE);
+}
+static inline void set_context_buffer(struct db_FILE * request, byte_buffer * buf){
+    request->buf = buf;
+}
+struct db_FILE * dbio_open(const char * file_name, char  mode);
+
 
 /**
  * @brief Wrapper function for fwrite
@@ -186,9 +180,13 @@ static inline long get_file_size(FILE *file) {
     
     return size;
 }
+byte_buffer * select_buffer(int size);
 void init_io_manager(struct io_manager * manage, int num_4kb, int num_sst_tble, int num_memtable, int sst_tbl_s, int mem_tbl_s);
 int add_open_close_requests(struct io_uring *ring, struct db_FILE * requests, int seq);
 int add_read_write_requests(struct io_uring *ring, struct io_manager *manage, struct db_FILE *requests, int seq);
 int process_completions(struct io_uring *ring);
 int chain_open_op_close(struct io_uring *ring, struct io_manager * m, struct db_FILE * req);
+void init_db_FILE_ctx(const int max_concurrent_ops, db_FILE * dbs);
+void return_buffer(byte_buffer * buff);
+void io_prep_in(struct io_manager * io_manager, int small, int max_concurrent_ops, int big_s, int huge_s, int num_huge, int num_big);
 #endif

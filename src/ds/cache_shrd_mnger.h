@@ -37,4 +37,5 @@ cache_entry retrieve_entry_sharded(shard_controller controller, block_index * in
  * @param controller Pointer to the shard controller to free.
  */
 void free_shard_controller(shard_controller *controller);
+cache * get_raw_cache(shard_controller controller);
 #endif

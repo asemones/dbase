@@ -13,6 +13,7 @@
 #include "structure_pool.h"
 #include "../db/backend/compression.h"
 #include "../util/io.h"
+#include <immintrin.h>
 #pragma once
 
 /**
@@ -26,6 +27,8 @@ typedef struct cache_entry {
     byte_buffer *buf;
     k_v_arr *ar;
     int ref_count;
+    struct_pool * loc;
+    int idx;
 } cache_entry;
 
 /**
@@ -65,14 +68,14 @@ typedef struct cache {
  */
 cache create_cache(size_t capacity, size_t page_size);
 /**
- * @brief Retrieves or loads a cache entry for a block index
+ * @brief Retrieves or loads a cache entry for a block index. Does not retreive any other logical pages within a physical block
  * @param c Pointer to the cache
  * @param index Pointer to the block index
  * @param file_name Name of the file containing the block
  * @param sst Pointer to the SST file info containing compression info
  * @return Pointer to the cache entry
  */
-cache_entry retrieve_entry(cache *c, block_index *index, const char *file_name, sst_f_inf *sst);
+cache_entry retrieve_entry_no_prefetch(cache *c, block_index *index, const char *file_name, sst_f_inf *sst);
 
 /**
  * @brief Pins a page in the cache to prevent eviction

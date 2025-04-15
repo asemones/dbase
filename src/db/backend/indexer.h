@@ -90,6 +90,11 @@ typedef struct sst_file_info{
  * @param uuid Unique identifier for the block
  * @param checksum Checksum for the block data
  */
+typedef enum block_type{
+  PHYSICAL_PAGE_HEADER,
+  MIDDLE,
+  PHYSICAL_PAGE_END
+}block_type;
 typedef struct block_index{
     size_t offset; //a pointer to the starting location of the block index
     bloom_filter * filter;
@@ -98,17 +103,22 @@ typedef struct block_index{
     size_t num_keys;
     char * uuid;
     uint32_t checksum;
-    
+    block_type type;
 } block_index;
-
-
 /**
  * @brief Creates a new block index structure
  * @param est_num_keys Estimated number of keys in the block
  * @return Pointer to the newly created block index
  */
 block_index * create_block_index(size_t est_num_keys);
-
+inline int num_blocks_in_pg(block_index * blocks);
+static inline block_index * get_pg_header(block_index * blocks){
+    int start = 0;
+    while(blocks[start].type != PHYSICAL_PAGE_HEADER){
+        start --;
+    }
+    return &blocks[start];
+}
 /**
  * @brief Frees a block index structure
  * @param index Pointer to the block index to free
@@ -254,3 +264,4 @@ void free_sst_inf(void * ss);
  * @param loc Location of the key in the buffer
  */
 void grab_min_b_key(block_index * index, byte_buffer *b, int loc);
+bool use_compression(sst_f_inf * f);

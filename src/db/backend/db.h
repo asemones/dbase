@@ -17,7 +17,23 @@
  * - WAL (if enabled)
  * Must be called before any database operations
  */
-void db_start();
+typedef struct db_shard{
+    storage_engine  *lsm;
+    compact_manager  * manager;
+    db_schedule  scheduler;
+    struct io_manager * io_manager;
+    pthread_t thread;
+}db_shard;
+typedef struct full_db{
+    db_shard * shard;
+    int num_shard;
+} full_db;
+db_shard  db_shard_create();
+void db_shard_start_run(void * shard);
+full_db * db(int num_shards);
+void db_run(full_db * db);
+void db_stop(full_db * db);
+
 
 /**
  * @brief Shuts down the database and cleans up resources

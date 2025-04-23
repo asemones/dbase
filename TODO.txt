@@ -54,3 +54,27 @@ db_schedule* schedule
 
 we can do a queue with "active" indexs (or just the raw ptrs)
 fix how ids are mapped to inbox indices
+intergrate wal with new system
+change the wal to be n segemented files that acts like a ring buffer
+figure out how to handle tasks "overflowing"
+done
+preformance optimizations: runs like utter garbage
+need to figure out how to reduce the active queue size
+AND accurate waits without a deadlock
+
+preformance targets:
+scheduler overhead is not great
+way too much time spent hashing stuff
+move skiplist to an arena or even consider replacing it as a memetable-> very slow
+considering removing all state from function returns, bad. heres how it maybe? could be done
+
+1. internal waits can just return the tasks future. Easy peasy
+2. Internal nowaits have to do the following: allocate a memory location for storing the future itself,
+and return the address of that location. For this, we can use the addr it is slotted into for the task. Check 
+if parent exists. if so, sub val. have the task store its future in a memory address passed to it by the parent
+
+2. exterrnal requests can just use future pointers
+3. cross core commuincation is much harder
+
+
+fix cache removal/free

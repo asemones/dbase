@@ -146,7 +146,6 @@ int create_jobs(compact_manager * cm, int levels []){
     return 0;
 }
 int start_jobs(compact_manager * cm){
-    thread_p * pool = cm->pool[0];
     for (int i = 0; i < 10; i++){
         compact_job_internal job;
         int res = dequeue(cm->job_queue, &job);
@@ -155,7 +154,7 @@ int start_jobs(compact_manager * cm){
         info->cm = cm;
         info->job = job; 
         fprintf(stdout, "starting job: lvl %ld to lvl %ld with %d files\n", job.start_level, job.end_level, job.to_merge->len);
-        add_work(pool,&merge_wrapper,info, NULL, &i);
+        //add_work(pool,&merge_wrapper,info, NULL, &i);
     }
     return 0;
 }

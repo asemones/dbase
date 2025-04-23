@@ -23,21 +23,25 @@ static inline uint64_t djb2(const char *str, int len) {
     return hash;
 }
 
-static inline int jump_consistent_hash(uint64_t key, int num_buckets) {
-    int b = -1, j = 0;
+int32_t jump_consistent_hash(uint64_t key, int32_t num_buckets) {
+    int64_t b = -1;
+    int64_t j = 0;
     while (j < num_buckets) {
         b = j;
         key = key * 2862933555777941757ULL + 1;
-        j = (int)((b + 1) * ((double)(1LL << 31) / (double)((key >> 33) + 1)));
+        uint64_t k = (key >> 33) + 1;
+        uint64_t numerator = (uint64_t)(b + 1) * (1ULL << 31);
+        j = numerator / k;
     }
-    return b;
+    return (int32_t)b;
 }
+
 static inline int route_req(char * uuid, int num_buckets, int len){
     uint64_t hash = djb2(uuid, len);
     return jump_consistent_hash(hash, num_buckets);
 }
 cache_entry  retrieve_entry_sharded(shard_controller controller, block_index * ind,  const char * f_n, sst_f_inf * sst){
-    int bucket = route_req(ind->uuid, controller.num_caches, UUID_LEN);
+    int bucket = FIRST_CACHE; /*TEMP*/
     return retrieve_entry_no_prefetch(&controller.caches[bucket], ind, f_n, sst);
 }
 void free_shard_controller(shard_controller *controller) {

@@ -46,9 +46,6 @@ int compare_jobs(const void * job1, const void * job2){
 compact_manager * init_cm(meta_data * meta, shard_controller * c){
     compact_manager * manager = (compact_manager*)wrapper_alloc((sizeof(compact_manager)), NULL,NULL);
     if (manager == NULL) return NULL;
-    for (int i = 0;  i < NUM_THREADP ;i++){
-        manager->pool[i] = thread_Pool(NUM_THREAD, 0);
-    }
     manager->compact_pool = create_pool(NUM_COMPACT*NUM_THREAD*NUM_THREADP);
     for (int i = 0; i < NUM_COMPACT*NUM_THREAD*NUM_THREADP; i++){
         insert_struct(manager->compact_pool, create_ci(GLOB_OPTS.BLOCK_INDEX_SIZE));
@@ -62,8 +59,9 @@ compact_manager * init_cm(meta_data * meta, shard_controller * c){
         insert_struct(manager->arena_pool, calloc_arena(1*MB));
     }
     manager->dict_buffer_pool = create_pool(NUM_PAGE_BUFFERS);
+    int  size = GLOB_OPTS.SST_TABLE_SIZE* 1;
     for (int i = 0; i < NUM_PAGE_BUFFERS; i++){
-        insert_struct(manager->dict_buffer_pool, create_buffer(GLOB_OPTS.SST_TABLE_SIZE* 1.1));
+        insert_struct(manager->dict_buffer_pool, create_buffer(size));
     }
     manager->c = c;
     if (manager->compact_pool == NULL  || manager->arena_pool == NULL ||
@@ -312,7 +310,6 @@ int merge_tables(byte_buffer *dest_buffer, byte_buffer * compression_buffer, com
         if (best_entry.key!=NULL & best_entry.key->entry != NULL) {
             insert(entrys, &best_entry);
             current_block.num_keys ++;
-            map_bit(best_entry.key->entry, current_block.filter);
             map_bit(best_entry.key->entry, curr_sst.filter);
             int best_entry_bytes  = entry_len(best_entry);
             block_b_count +=  best_entry_bytes;
@@ -502,9 +499,6 @@ void shutdown_cm(compact_manager * cm){
     cm->check_meta_cond = true;
 }
 void free_cm(compact_manager * manager){
-    for (int i = 0; i < NUM_THREADP; i++){
-        destroy_pool(manager->pool[i]);
-    }
     free_pool(manager->compact_pool, &free_ci);
     free_pool(manager->arena_pool, &free_arena);
     free_pool(manager->dict_buffer_pool, &free_buffer);

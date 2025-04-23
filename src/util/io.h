@@ -8,14 +8,11 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include "alloc_util.h"
-#include <liburing.h>
 #include <fcntl.h>
-#include "../ds/list.h"
-#include "../ds/byte_buffer.h"
-#include "../ds/structure_pool.h"
-#include "../ds/arena.h"
+#include "../ds/list.h" // Still needed for list functions if used directly
 #include <sys/resource.h>
-#include "aco.h"
+#include "aco.h" // Still needed for aco functions
+#include "io_types.h" // Include the extracted types
 
 
 #ifndef IO_H
@@ -24,54 +21,12 @@
 #define DEFAULT_WRT_FLAGS (O_WRONLY | O_CREAT | O_APPEND)
 #define DEFAULT_PERMS (S_IRUSR  | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH)
 
-enum operation{
-    READ,
-    WRITE,
-    OPEN,
-    CLOSE,
-};
-typedef void (*aio_callback)(void *arg);
-
-/*since we want no memcpys, EVERY SINGLE buffer MUST be owned by the manager*/
-// Add to your header file
-struct io_manager{
-    int m_tbl_s;
-    int sst_tbl_s;
-    struct_pool * sst_table_buffers;
-    struct_pool * mem_table_buffers;
-    struct_pool * four_kb;
-    struct_pool * io_requests; // we keep these tasks heap allocated to mimimize the stack size
-    struct io_uring ring;
-    arena a;
-    int num_in_queue;
-    int total_buffers;
-    int num_segments;
-    struct iovec *iovecs;
-};
-__thread static struct io_manager * man;
-union descriptor{
-    uint64_t fd;
-    char * fn;
-}; 
-/*one cache line!*/
-typedef struct db_FILE {
-    union descriptor desc; 
-    int priority;
-    off_t offset;
-    mode_t perms;
-    size_t len;
-    int flags;
-    aio_callback callback;
-    void *callback_arg;
-    enum operation op;
-    byte_buffer* buf;
-    int response_code;
-}db_FILE;
+// Type definitions moved to io_types.h
 int do_open(const char * fn, struct db_FILE * req, struct io_manager * manager);
 int do_read(struct db_FILE * req, off_t offset, size_t len, struct io_manager * manager);
 int do_write(struct db_FILE * req, off_t offset, size_t len, struct io_manager * manager);
 int do_close(int fd, struct db_FILE * req, struct io_manager * manager);
-int do_fsync(int fd, struct io_manager * manager);
+int do_fsync(struct db_FILE * file, struct io_manager * manager);
 static inline void  dbio_close(struct db_FILE * request){
     do_close(request->desc.fd, request, man);
     return_struct(man->io_requests, request, NULL);
@@ -84,13 +39,19 @@ static inline int dbio_read(struct db_FILE * request, off_t off, size_t len){
     return do_read(request, off, len,man);
 }
 static inline void dbio_fsync(struct db_FILE * request){
-    do_fsync(request->desc.fd, man);
+    do_fsync(request, man);
 }
 static inline size_t sizeofdb_FILE(){
     return sizeof(db_FILE);
 }
 static inline void set_context_buffer(struct db_FILE * request, byte_buffer * buf){
     request->buf = buf;
+}
+static inline void return_ctx(struct db_FILE * request){
+    return_struct(man->io_requests, request, NULL);
+}
+static inline db_FILE*  get_ctx(){
+    return request_struct(man->io_requests);
 }
 struct db_FILE * dbio_open(const char * file_name, char  mode);
 
@@ -188,5 +149,5 @@ int process_completions(struct io_uring *ring);
 int chain_open_op_close(struct io_uring *ring, struct io_manager * m, struct db_FILE * req);
 void init_db_FILE_ctx(const int max_concurrent_ops, db_FILE * dbs);
 void return_buffer(byte_buffer * buff);
-void io_prep_in(struct io_manager * io_manager, int small, int max_concurrent_ops, int big_s, int huge_s, int num_huge, int num_big);
+void io_prep_in(struct io_manager * io_manager, int small, int max_concurrent_ops, int big_s, int huge_s, int num_huge, int num_big, aio_callback std_func);
 #endif

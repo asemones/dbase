@@ -2,7 +2,8 @@
 #include <stdio.h>
 #include "../../ds/bloomfilter.h"
 #include "dal/metadata.h"
-#include "../../ds/list.h"
+// #include "../../ds/list.h" // Replaced with circular queue
+#include "../../ds/circq.h"
 #include "../../ds/hashtbl.h"
 #include <time.h>
 #include <string.h>
@@ -22,7 +23,7 @@
 #define LSM_H
 
 #define TOMB_STONE "-"
-#define NUM_HASH 7
+#define NUM_HASH 5
 #define LOCKED_TABLE_LIST_LENGTH 2
 #define PREV_TABLE 1
 #define READER_BUFFS 10
@@ -62,6 +63,9 @@ typedef struct mem_table{
     SkipList *skip;
 }mem_table;
 
+// Forward declare storage_engine for the macro
+typedef struct storage_engine storage_engine;
+
 /**
  * @brief Structure representing the storage engine.
  * @struct storage_engine
@@ -75,24 +79,30 @@ typedef struct mem_table{
  * @param compactor_wait_mtx Mutex for compaction waiting.
  * @param cm_ref Flag indicating if compaction is in progress.
  * @param error_code Error code for the storage engine.
+ * @param memtable_queue Queue managing immutable and ready memtables.
  */
-typedef struct storage_engine{
-    list * tables;
+// Define the circular queue type for mem_table pointers
+DEFINE_CIRCULAR_QUEUE(mem_table*, memtable_queue_t)
+
+struct storage_engine{
+    mem_table * active_table;        // The table currently accepting writes
+    memtable_queue_t * ready_queue;  // Queue of cleared tables ready for use
+    memtable_queue_t * flush_queue;  // Queue of immutable tables waiting to be flushed
     meta_data * meta;
-    size_t num_table;
+    size_t num_table;           // Total number of tables managed (active + queued)
     struct_pool * write_pool;
     shard_controller cach;
     WAL * w;
     bool * cm_ref;
     int error_code;
-    int current_table;
-}storage_engine;
+    struct_pool *sst_info_pool; // Pool for temporary sst_f_inf structs used during flush
+};
 
 /**
  * @brief Locks the current memory table for writing.
  * @param engine A pointer to the storage engine.
  */
-void lock_table(storage_engine * engine);
+// void lock_table(storage_engine * engine); // Logic integrated into write_record/flush
 
 /**
  * @brief Creates a new memory table.
@@ -216,7 +226,7 @@ void dump_tables(storage_engine * engine);
  */
 void free_engine(storage_engine * engine, char * meta_file, char * bloom_file);
 
-int flush_all_tables(storage_engine * engine, int flush);
+int flush_all_tables(storage_engine * engine);
 
 #endif
 

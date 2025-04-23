@@ -66,6 +66,16 @@
     "functional": "c",
     "deque": "c",
     "vector": "c",
-    "atomic": "c"
+    "atomic": "c",
+    "numbers": "c",
+    "system_error": "c",
+    "tuple": "c",
+    "type_traits": "c",
+    "string": "c",
+    "istream": "c",
+    "new": "c",
+    "ostream": "c",
+    "typeinfo": "c",
+    "random": "c"
   }
 }

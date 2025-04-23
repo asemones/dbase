@@ -21,7 +21,6 @@ cache create_cache(size_t capacity, size_t page_size) {
     c.capacity     = capacity;
     c.page_size    = page_size;
     c.filled_pages = 0;
-    c.map          = Dict();
     c.mem          = calloc_arena(capacity * 2);
     c.max_pages = capacity / (page_size + sizeof(byte_buffer) + sizeof(cache_entry)
                   + OVER_FLOW_EXTRA + (sizeof(db_unit)) * 2);
@@ -31,13 +30,13 @@ cache create_cache(size_t capacity, size_t page_size) {
 
     for (size_t i = 0; i < c.max_pages; i++) {
         c.frames[i]   = create_cache_entry(page_size, page_size / 16, c.mem);
+        c.frames[i].idx = i;
         c.ref_bits[i] = 0;
     }
     c.compression_buffers = create_pool(NUM_COMPRESSION_BUF);
     for (int i = 0; i < NUM_COMPRESSION_BUF; i++){
         insert_struct(c.compression_buffers, create_buffer(page_size));
     }
-    pthread_mutex_init(&c.c_lock, NULL);
     return c;
 }
 /*implement a 256 vector verision or inline asm. we really dont want eviction as a bottleneck*/
@@ -47,9 +46,6 @@ size_t clock_evict(cache *c) {
         cache_entry *  f = &c->frames[idx];
 
         if (c->ref_bits[idx] == 0 && f->ref_count == 0) {
-            if (f->buf->utility_ptr) {
-                remove_kv(c->map, f->buf->utility_ptr);
-            }
             reset_buffer(f->buf);
             f->ar->len = 0;
 
@@ -68,18 +64,15 @@ static size_t get_free_frame(cache *c) {
     return clock_evict(c);
 }
 void handle_checksum_error(cache * c, db_FILE * sst_file, byte_buffer * buffer){
-        remove_kv(c->map, buffer->utility_ptr);
         fprintf(stderr, "invalid data\n");
         dbio_close(sst_file);
 }
 cache_entry retrieve_entry_no_prefetch(cache *c, block_index *index, const char *file_name, sst_f_inf *sst) {
-    void *val = get_v(c->map, index->uuid);
-    empty.buf = NULL;
-    if (val) {
-        size_t idx = (size_t)(uintptr_t)val;
-        c->ref_bits[idx] = 1;
-        cache_entry ce = c->frames[idx];
-        return ce;
+    if (index->page) {
+        cache_entry * pg = index->page;
+        pg->ref_count ++;
+        c->ref_bits[pg->idx] = 1;
+        return *pg;
     }
     db_FILE * sst_file =  dbio_open(file_name, 'r');
 
@@ -95,52 +88,46 @@ cache_entry retrieve_entry_no_prefetch(cache *c, block_index *index, const char 
     /*len becomes aligned*/
     pin_page(&c->frames[idx]);
 
-    byte_buffer *buffer = request_struct_idx(man->four_kb, idx);
+    byte_buffer *buffer = request_struct(man->four_kb);
     set_context_buffer(sst_file, buffer);
 
-    size_t bytes_read = dbio_read(sst_file, relative_index, index->len);
+    size_t bytes_read = dbio_read(sst_file, read_loc->offset, index->len);
+    uint64_t actually_read = min(bytes_read, index->len);
+    bytes_read = actually_read;
     if (bytes_read == 0) return empty;
     byte_buffer * decompressed = NULL;
-    int uuid_len = (int)strlen(index->uuid) + 1;
-
+    /*if compress, we need to swap buffers*/
     if (use_compression(sst)){
         decompressed = request_struct(c->compression_buffers);
         buffer->curr_bytes = index->len + relative_index;
         b_seek(buffer, relative_index);
         handle_decompression(sst, buffer, decompressed);
         c->frames[idx].buf = decompressed;
-        memcpy(&decompressed->buffy[decompressed->max_bytes - uuid_len], index->uuid, uuid_len);
-        decompressed->utility_ptr = &decompressed->buffy[decompressed->max_bytes - uuid_len];
     }
-    else{
-        memcpy(&buffer->buffy[buffer->max_bytes - uuid_len], index->uuid, uuid_len);
-        buffer->utility_ptr = &buffer->buffy[buffer->max_bytes - uuid_len];
-    }
-     
-    c->ref_bits[idx] = 1;
 
-    add_kv(c->map, buffer->utility_ptr, (void*)(uintptr_t)idx);
-    
-    if (!verify_data((uint8_t*)buffer->buffy, buffer->curr_bytes, index->checksum)) {
+    c->ref_bits[idx] = 1;
+    /*checksum fail*/
+    if (!verify_data((uint8_t*)buf_ind(buffer, relative_index), actually_read, index->checksum)) {
         handle_checksum_error(c, sst_file, buffer);
         c->frames[idx].ref_count --;
         if (decompressed) return_struct(c->compression_buffers, decompressed, &reset_buffer);
-        return_struct_idx(man->four_kb, idx);
+        return_struct(man->four_kb, buffer, NULL);
         return empty;
     }
+    /*if compress, we need to swap buffers, so return the buffer it was read into */
     if (use_compression(sst)){
         load_block_into_into_ds(decompressed, c->frames[idx].ar, &into_array);
         c->frames[idx].buf = decompressed;
-        c->frames[idx].idx= -1;
         c->frames[idx].loc = c->compression_buffers;
-        return_struct_idx(man->four_kb, idx);
+        return_struct(man->four_kb, buffer, NULL);
     }
     else{
+        /*otherwise, no compression buffer exists so continue and set buffer to regular buf*/
         load_block_into_into_ds(buffer, c->frames[idx].ar, &into_array);
         c->frames[idx].buf = buffer;
-        c->frames[idx].idx = idx;
     }
     dbio_close(sst_file);
+    index->page = &c->frames[idx];
     return c->frames[idx];
 }
 
@@ -151,26 +138,18 @@ void pin_page(cache_entry *c) {
 void unpin_page(cache_entry *c) {
     __sync_fetch_and_sub(&c->ref_count, 1);
     if (c->ref_count <= 0 && c->idx > 0 ){
-        return_struct_idx(man->four_kb, c->idx);
+        return_struct(man->four_kb, c->buf, NULL);
+        c = NULL; // Assuming 'buffer' is the pointer corresponding to 'c->idx' and no reset needed
     }
-    else{
+    else if (c->ref_count <=0){
         return_struct(c->loc, c->buf, &reset_buffer);
+        c = NULL;
     }
-}
-
-void free_entry(void *entry) {
-    cache_entry *c = (cache_entry*)entry;
-    free_buffer(c->buf);
 }
 
 void free_cache(cache *c) {
     if (!c) return;
-    for (size_t i = 0; i < c->max_pages; i++) {
-        free_entry(&c->frames[i]);
-    }
     free(c->frames);
     free(c->ref_bits);
     free_arena(c->mem);
-    free_dict_no_element(c->map);
-    pthread_mutex_destroy(&c->c_lock);
 }

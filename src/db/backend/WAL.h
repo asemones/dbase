@@ -1,84 +1,122 @@
+#ifndef WAL_H
+#define WAL_H
+
 #include <stdio.h>
 #include <stdlib.h>
-#include "option.h"
-#include "../../ds/byte_buffer.h"
+#include <stdbool.h> // For bool type
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
-#include "../../util/io.h"
+
+#include "option.h"
+#include "../../ds/byte_buffer.h"
+#include "../../util/io.h" // For db_FILE
+#include "../../util/io_types.h" // For db_FILE definition
 #include "key-value.h"
 #include "../../util/error.h"
-#include "../../ds/list.h"
+#include "../../ds/structure_pool.h" // Include for struct_pool
 
-
-
-#define FS_B_SIZE 512
-#define MAX_WAL_FN_LEN 20
-#pragma once
+// Define constants (Consider moving these to option.h or a config)
+#define NUM_WAL_SEGMENTS 4 // Example: Number of WAL segments
+#define WAL_SEGMENT_SIZE (GLOB_OPTS.WAL_SIZE) // Use existing option for size per segment
+#define MAX_WAL_SEGMENT_FN_LEN 32 // Max length for segment filenames like "WAL_SEG_0.bin"
 
 /**
- * @brief Write-Ahead Log structure for durability and crash recovery
+ * @brief Represents a single segment of the WAL.
+ */
+typedef struct WAL_segment {
+    char filename[MAX_WAL_SEGMENT_FN_LEN]; 
+    size_t current_size;                 
+    bool active;                          
+    db_FILE * model;         
+    // Removed mutex
+} WAL_segment;
+
+/**
+ * @brief Manages the set of WAL segments.
+ */
+typedef struct WAL_segments_manager {
+    WAL_segment segments[NUM_WAL_SEGMENTS]; // Array of WAL segments
+    int current_segment_idx;                // Index of the currently active segment (0 to NUM_WAL_SEGMENTS-1)
+    size_t segment_capacity;                // Max size for each segment (WAL_SEGMENT_SIZE)
+    int num_segments;                       // Number of segments (NUM_WAL_SEGMENTS)
+} WAL_segments_manager;
+
+/**
+ * @brief Write-Ahead Log structure using rotating segments and async I/O.
  * @struct WAL
- * @param fd File descriptor for the current WAL file
- * @param wal_meta File pointer to the WAL metadata file
- * @param fn List of WAL filenames
- * @param fn_buffer Buffer for filename operations
- * @param wal_buffer Buffer for WAL operations
- * @param len Total length of the WAL
- * @param curr_fd_bytes Current number of bytes written to the current file
+ * @param segments_manager Manages the individual WAL file segments and their db_FILE pools.
+ * @param meta_ctx File context for the WAL metadata file (assumed synchronous or handled separately).
+ * @param wal_buffer Current write buffer for accumulating WAL entries.
+ * @param total_len Total number of records written across all segments (logical length).
  */
 typedef struct WAL {
-    int fd;
-    FILE * wal_meta;
-    list * fn;
-    byte_buffer * fn_buffer;
-    byte_buffer * wal_buffer;
-    size_t len;
-    size_t curr_fd_bytes;
-}WAL;
+    WAL_segments_manager segments_manager;
+    struct db_FILE *meta_ctx;
+    byte_buffer *wal_buffer;
+    size_t total_len; // Logical total number of entries/operations written
+    // Removed flush_lock
+} WAL;
+
+// --- Public API (Signatures unchanged from original) ---
 
 /**
- * @brief Serializes a WAL structure to a byte buffer
- * @param w Pointer to the WAL structure
- * @param b Pointer to the byte buffer to serialize to
+ * @brief Initializes a new WAL structure using rotating segments.
+ * Reads metadata if available, otherwise creates new segments and pools.
+ * @param b Pointer to a byte buffer, primarily used internally for metadata read/write.
+ * @return Pointer to the newly initialized WAL structure, or NULL on failure.
  */
-void seralize_wal(WAL *w, byte_buffer *b);
+WAL* init_WAL(byte_buffer *b); // Signature kept as original
 
 /**
- * @brief Deserializes a WAL structure from a byte buffer
- * @param w Pointer to the WAL structure to populate
- * @param b Pointer to the byte buffer to deserialize from
+ * @brief Writes a key-value pair to the WAL. Handles segment rotation and buffer flushing asynchronously.
+ * @param w Pointer to the WAL structure.
+ * @param key The key to write.
+ * @param value The value to write.
+ * @return 0 on success, error code on failure.
  */
-void deseralize_wal(WAL *w, byte_buffer *b);
+int write_WAL(WAL *w, db_unit key, db_unit value); // Signature kept as original
 
 /**
- * @brief Adds a new WAL file to the WAL structure
- * @param w Pointer to the WAL structure
- * @return Pointer to the new WAL filename
+ * @brief Closes WAL segments, writes final metadata, and cleans up resources. Ensures pending async ops complete.
+ * @param w Pointer to the WAL structure to clean up.
+ * @param temp Temporary byte buffer, primarily used internally for metadata write.
  */
-char * add_new_wal_file(WAL *w);
+void kill_WAL(WAL *w);// Signature kept as original
+
+
+// --- Internal functions (Should be static in .c file ideally) ---
 
 /**
- * @brief Initializes a new WAL structure
- * @param b Pointer to a byte buffer for initialization
- * @return Pointer to the newly initialized WAL structure
+ * @brief Serializes the essential WAL state to a byte buffer for metadata persistence.
+ * @param w Pointer to the WAL structure.
+ * @param b Pointer to the byte buffer to serialize to.
  */
-WAL* init_WAL(byte_buffer *b);
+void serialize_wal_metadata(WAL *w, byte_buffer *b);
 
 /**
- * @brief Writes a key-value pair to the WAL
- * @param w Pointer to the WAL structure
- * @param key The key to write
- * @param value The value to write
- * @return 0 on success, error code on failure
+ * @brief Deserializes the WAL state from a metadata byte buffer.
+ * @param w Pointer to the WAL structure to populate.
+ * @param b Pointer to the byte buffer containing metadata.
+ * @return true if deserialization was successful and state was loaded, false otherwise.
  */
-int write_WAL(WAL *w, db_unit key, db_unit value);
+bool deserialize_wal_metadata(WAL *w, byte_buffer *b);
 
 /**
- * @brief Closes and cleans up a WAL structure
- * @param w Pointer to the WAL structure to clean up
- * @param temp Temporary byte buffer for cleanup operations
+ * @brief Switches to the next WAL segment logically. Does not open/close files.
+ * @param w Pointer to the WAL structure.
+ * @return 0 on success, error code on failure.
  */
-void kill_WAL(WAL *w, byte_buffer *temp);
+int rotate_wal_segment(WAL *w);
+
+/**
+ * @brief Flushes the internal write buffer to the current segment file asynchronously using dbio.
+ * @param w Pointer to the WAL structure.
+ * @return Number of bytes submitted for writing, or negative on error submitting.
+ */
+int flush_wal_buffer(WAL *w, db_unit k, db_unit v);
+
+
+#endif // WAL_H

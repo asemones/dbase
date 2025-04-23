@@ -118,4 +118,6 @@ int compareInt(const void* a, const void* b);
  * @param b Pointer to the second string
  * @return Negative if a < b, 0 if a == b, positive if a > b
  */
-int compareString(const void* a, const void* b);
+static inline int compareString(const void* a, const void* b) {
+    return strcmp((const char*)a, (const char*)b);
+}

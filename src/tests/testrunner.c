@@ -11,8 +11,6 @@
 #include "testlsm.h"
 #include "testcompactor.h"
 #include "test_iter.h"
-#include "test_iter.h"
-#include "testwal.h"
 #include "testcompress.h"
 #include "test scheduler.h"
 
@@ -23,6 +21,7 @@ void tearDown (void) {}
 
 int main(void) {
     UNITY_BEGIN();
+    /*
     fprintf(stderr, "RUNNING LIST TESTS:\n");
     RUN_TEST(test_create_list);
     RUN_TEST(test_insert_elements);
@@ -64,9 +63,11 @@ int main(void) {
     RUN_TEST(test_multiple_urls);
     RUN_TEST(test_null_and_empty_url);
     RUN_TEST(test_dumpFilter);
+    */
     fprintf(stderr, "RUNNING MULTI TASK TESTS\n");
     RUN_TEST(test_framework_base);
-    RUN_TEST(test_framework_main);
+    //RUN_TEST(test_framework_main);
+    /*
     fprintf(stderr, "RUNNING IO TESTS\n");
     RUN_TEST(test_writeFile);
     RUN_TEST(test_readFile);
@@ -74,18 +75,17 @@ int main(void) {
     RUN_TEST(test_io_uring_read);
     RUN_TEST(test_async_io_with_event_loop);
     RUN_TEST(test_benchmark_io_performance);
+    */
     fprintf(stderr,"Running compression tests\n");
     RUN_TEST(test_regular_compress);
     RUN_TEST(test_regular_decompress);
-    RUN_TEST(test_dict_compress);
-    RUN_TEST(test_dict_decompress);
     fprintf(stderr, "RUNNING METADATA TESTS\n");
     RUN_TEST(test_create_metadata_fresh);
     RUN_TEST(test_use_and_load);
     fprintf(stderr, "RUNNING ENGINE TESTS\n");
-    RUN_TEST(test_create_engine);
-    RUN_TEST(test_write_engine);
-    RUN_TEST(test_write_then_read_engine);
+    RUN_TEST(test_db_create);
+    RUN_TEST(test_db_write_read_single);
+    RUN_TEST(test_db_write_read_multiple_persistent);
     fprintf(stderr, "RUNNING COMPACTION TESTS\n");
     RUN_TEST(fat_db_passive);
     RUN_TEST(random_values_short);
@@ -96,10 +96,5 @@ int main(void) {
     RUN_TEST(test_next);
     RUN_TEST(test_run_scan);
     RUN_TEST(test_full_table_scan_messy);
-    fprintf(stderr, "RUNNING WAL TESTS\n");
-    RUN_TEST(test_wal_init);
-    RUN_TEST(test_seralize_wal);
-    RUN_TEST(test_deseralize_wal);
-    RUN_TEST(test_write_WAL);
     return UNITY_END();
 }

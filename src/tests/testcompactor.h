@@ -13,28 +13,19 @@
 #pragma once
 
 
-compact_manager * cm;
-storage_engine * engine;
-thread_p * thrd;
+db_shard shard; // Use db_shard instead of separate engine/cm/thrd
 
 void prep_test(){
-    engine = create_engine(GLOB_OPTS.META_F_N, GLOB_OPTS.BLOOM_F_N);
-    cm = init_cm(engine->meta, &engine->cach);
-    engine->cm_ref = &cm->check_meta_cond;
-   
-    thread_p * thrd = thread_Pool(3, 0);
-    int priority=  1;
-    add_work(thrd, &run_compactor, cm, NULL, &priority);
-    
+    // Create the shard, which includes the engine, compactor, and its runtime
+    shard = db_shard_create();
+    // Compactor runs automatically within the shard's runtime, no need for separate thread pool
 }
 void end_test(){
     sleep(10);
-    shutdown_cm(cm);
-    destroy_pool(thrd);
-    remove_ssts(cm->sst_files);/*this wont remove the last sst if it gets dumped to disk during free_cm, so its fine if theres ONE spare */
-    sleep(10);
-    free_engine(engine, GLOB_OPTS.META_F_N, GLOB_OPTS.BLOOM_F_N);
-    free_cm(cm);
+    // db_end handles compactor shutdown and resource cleanup
+    remove_ssts(shard.lsm->meta->sst_files); // Get sst_files from the shard's metadata
+    sleep(10); // Keep sleep if needed for operations to settle before file removal
+    db_end(&shard);
     remove(GLOB_OPTS.META_F_N);
     remove(GLOB_OPTS.BLOOM_F_N);
     remove ("WAL_0.bin");
@@ -43,20 +34,20 @@ void end_test(){
 }
 void fat_db_passive(){
     prep_test();
-    create_a_bigbase(engine);
+    create_a_bigbase(&shard); // Pass shard pointer
     end_test();
 }
 void random_values_short(){
     const int size_per_add =5000;
     prep_test();
-    create_a_bigbase(engine);
-    add_random_records_a_z(engine,size_per_add);
+    create_a_bigbase(&shard); // Pass shard pointer
+    add_random_records_a_z(&shard,size_per_add); // Pass shard pointer
     end_test();
 }
 void random_values_long(){
     const int size_per_add =50000;
     prep_test();
-    create_a_bigbase(engine);
-    add_random_records_a_z(engine,size_per_add);
+    create_a_bigbase(&shard); // Pass shard pointer
+    add_random_records_a_z(&shard,size_per_add); // Pass shard pointer
     end_test();
 }

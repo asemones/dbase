@@ -126,7 +126,6 @@ typedef struct compact_job_internal{
  * @param c Pointer to the shard controller
  */
 typedef struct compact_manager{
-    thread_p * pool [NUM_THREADP]; // just use one pool for now
     struct_pool * compact_pool;
     list ** sst_files;
     struct_pool * arena_pool;

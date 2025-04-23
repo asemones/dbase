@@ -37,8 +37,11 @@ void init_sst_iter(sst_iter * cursor, sst_f_inf* level) {
     init_block_iter(&cursor->cursor, first);
 }
 void init_mem_table_iters(mem_table_iter *mem_table_iters, storage_engine *s, size_t num_tables) {
-    for (size_t i = 0; i < num_tables; i++) {
-        mem_table * table = at(s->tables, i);
+    mem_table * table = s->active_table;
+    mem_table_iters[0].t = table;
+    mem_table_iters[0].cursor = table->skip->header->forward[0];
+    for (size_t i = 1; i < num_tables; i++) {
+        mem_table * table = s->flush_queue->array[i];
         mem_table_iters[i].t = table;
         mem_table_iters[i].cursor = table->skip->header->forward[0];
     }

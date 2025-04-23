@@ -61,13 +61,13 @@ Index Structure:
  * @param compr_info Compression information for the SST file
  */
 typedef struct sst_file_info{
-    char file_name[MAX_F_N_SIZE];
+    char * file_name;
     //size_t id;
     size_t length;
     size_t compressed_len;
     list * block_indexs; //type:  block_index
-    char max[MAX_KEY_SIZE];
-    char min[MAX_KEY_SIZE];
+    char * max;
+    char * min;
     struct timeval time;
     size_t block_start;
     bloom_filter * filter;
@@ -87,7 +87,6 @@ typedef struct sst_file_info{
  * @param min_key Minimum key in the block
  * @param len Length of the block in bytes
  * @param num_keys Number of keys in the block
- * @param uuid Unique identifier for the block
  * @param checksum Checksum for the block data
  */
 typedef enum block_type{
@@ -97,15 +96,14 @@ typedef enum block_type{
 }block_type;
 typedef struct block_index{
     size_t offset; //a pointer to the starting location of the block index
-    bloom_filter * filter;
     char *min_key;
     size_t len;
     size_t num_keys;
-    char * uuid;
     uint32_t checksum;
+    void * page;
     block_type type;
 } block_index;
-/**
+/*
  * @brief Creates a new block index structure
  * @param est_num_keys Estimated number of keys in the block
  * @return Pointer to the newly created block index

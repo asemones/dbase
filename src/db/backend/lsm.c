@@ -1,7 +1,6 @@
 #include "lsm.h"
 #define MEMTABLE_SIZE 80000
 #define TOMB_STONE "-"
-#define NUM_HASH 7
 #define LOCKED_TABLE_LIST_LENGTH 2
 #define PREV_TABLE 1
 #define READER_BUFFS 10
@@ -34,27 +33,9 @@ mem_table * create_table(){
     }
     return table;
 }
+
 int restore_state(storage_engine * e ,int lost_tables){
     WAL* w = e->w;
-    if (w->fn->len  == 0 ){
-        return -1;
-    }
-    int ret = 0;
-    for (int i = 0;  i < lost_tables; i++){
-        mem_table * m = at(e->tables, i);
-        char ** file = get_last(w->fn);
-        if (file  == NULL  || *file == NULL) return -1;
-        FILE * target = fopen(*file, "rb");
-        byte_buffer* skip_buffer = request_struct(e->write_pool);
-        if (target == NULL) return -1;
-        skip_buffer->curr_bytes = read_wrapper(skip_buffer->buffy,1, get_file_size(target), target);
-
-        m->bytes = skip_from_stream(m->skip, skip_buffer);
-        ret += m->bytes;
-
-    }
-    return ret;
-
 }
 void clear_table(mem_table * table){
     if (table->skip != NULL) freeSkipList(table->skip);
@@ -71,12 +52,21 @@ void clear_table(mem_table * table){
 storage_engine * create_engine(char * file, char * bloom_file){
     init_crc32_table();
     storage_engine * engine = (storage_engine*)wrapper_alloc((sizeof(storage_engine)), NULL,NULL);
-    if (engine == NULL) return NULL;
-    engine->tables = List(0, sizeof(mem_table), true);
-    engine->current_table = 0;
+    // Assume engine allocation succeeded before this function call
     set_debug_defaults(&GLOB_OPTS);
-    for (int i = 0; i < GLOB_OPTS.num_memtable; i++){
-        insert(engine->tables,create_table());
+
+    // Initialize queues (assuming success)
+    engine->ready_queue = memtable_queue_t_create(GLOB_OPTS.num_memtable);
+    engine->flush_queue = memtable_queue_t_create(GLOB_OPTS.num_memtable);
+
+    // Initialize active table (assuming success)
+    engine->active_table = create_table();
+    engine->num_table = GLOB_OPTS.num_memtable; // Total number of tables
+
+    // Create spare tables and add them to the ready queue (assuming success)
+    for (int i = 1; i < GLOB_OPTS.num_memtable; i++) { // Start from 1 as active_table is the first
+        mem_table* spare_table = create_table();
+        memtable_queue_t_enqueue(engine->ready_queue, spare_table);
     }
     engine->meta = load_meta_data(file, bloom_file);
     if (engine->meta == NULL) return NULL;
@@ -106,24 +96,30 @@ int write_record(storage_engine* engine ,db_unit key, db_unit value){
         fprintf(stdout, "WARNING: transcantion failure \n");
         return FAILED_TRANSCATION;
     }
-    mem_table * table = at(engine->tables, engine->current_table);
-    /*if a spare table does not exist, wait on the table signal for an avaliable table*/
-    if (table == NULL){
+   
+    mem_table * table = engine->active_table;
 
-    }
-    if (table->bytes + 4 + key.len + value.len >=  GLOB_OPTS.MEM_TABLE_SIZE){
-        lock_table(engine);
+    // Check if the active table needs to be rotated
+    if (table->bytes + 4 + key.len + value.len >= GLOB_OPTS.MEM_TABLE_SIZE) {
+        table->immutable = true;
+        memtable_queue_t_enqueue(engine->flush_queue, table); // Add full table to flush queue
 
+        // Try to get a new table from the ready queue
+        mem_table* next_table = NULL;
+        while (!memtable_queue_t_dequeue(engine->ready_queue, &next_table)) {
+             aco_yield();
+        }
+        engine->active_table = next_table; 
+        table = engine->active_table;      
+        // Check if the flush queue has reached the threshold to trigger flushing
+        if (engine->flush_queue->size >= GLOB_OPTS.num_to_flush) {
+             flush_all_tables(engine);
+        }
     }
-    int flush = min(GLOB_OPTS.num_memtable, GLOB_OPTS.num_to_flush);
-    if (engine->current_table >= flush){
-        flush_all_tables(engine, flush);
-    }
-    
     insert_list(table->skip, key, value);
     table->num_pair++;
-    table->bytes += 4 + key.len + value.len ;
-    map_bit(key.entry,table->filter);
+    table->bytes += 4 + key.len + value.len;
+    map_bit(key.entry, table->filter);
     
     return 0;
 }
@@ -232,16 +228,63 @@ char * disk_read_snap(snapshot * snap, const char * keyword){
     return NULL;
 }
 char* read_record(storage_engine * engine, const char * keyword){
-    mem_table * table = at(engine->tables, engine->current_table);
-    Node * entry= search_list(table->skip, keyword);
-    if (entry== NULL) return disk_read(engine, keyword);
-    return entry->value.entry;    engine->num_table = 0;
+    // 1. Check the active table
+    mem_table * active_table = engine->active_table;
+    Node * entry = search_list(active_table->skip, keyword);
+    if (entry != NULL) {
+        // Found in active table
+        // Handle tombstone check if necessary (assuming TOMB_STONE means deleted)
+        if (strcmp(entry->value.entry, TOMB_STONE) == 0) {
+             return NULL; // Treat tombstone as not found
+        }
+        return entry->value.entry;
+    }
+
+    // 2. Check immutable tables waiting in the flush queue (newest first)
+    // Create a temporary snapshot of the flush queue pointers
+    int flush_queue_size = engine->flush_queue->size;
+    if (flush_queue_size > 0) {
+        mem_table* temp_tables[flush_queue_size];
+        int count = 0;
+        mem_table* temp_table;
+
+        // Dequeue all into temp array
+        while(memtable_queue_t_dequeue(engine->flush_queue, &temp_table)) {
+            temp_tables[count++] = temp_table;
+        }
+
+        // Search temp array (reverse order - newest immutable first) and re-enqueue
+        for (int i = count - 1; i >= 0; i--) {
+            mem_table* table_to_check = temp_tables[i];
+            entry = search_list(table_to_check->skip, keyword);
+             // Re-enqueue the table immediately after checking (or before?) - let's do it after search loop
+            if (entry != NULL) {
+                 // Re-enqueue all tables before returning
+                 for(int j=0; j<count; ++j){
+                     memtable_queue_t_enqueue(engine->flush_queue, temp_tables[j]);
+                 }
+                 // Found in an immutable table
+                 if (strcmp(entry->value.entry, TOMB_STONE) == 0) {
+                     return NULL; // Treat tombstone as not found
+                 }
+                 return entry->value.entry;
+            }
+        }
+         // Re-enqueue all tables if not found during search
+         for(int j=0; j<count; ++j){
+             memtable_queue_t_enqueue(engine->flush_queue, temp_tables[j]);
+         }
+    }
+
+
+    // 3. If not found in memory, check disk
+    return disk_read(engine, keyword);
 }
+// Reads directly from the snapshot's disk view, does not check live memtables.
 char* read_record_snap(storage_engine * engine, const char * keyword, snapshot * s){
-    mem_table * table = at(engine->tables, engine->current_table);
-    Node * entry= search_list(table->skip, keyword);
-    if (entry== NULL) return disk_read_snap(s,keyword);
-    return entry->value.entry; 
+   // Snapshots represent disk state at a point in time.
+   // We should not consult the live/active memtables for a snapshot read.
+   return disk_read_snap(s, keyword);
 }
 void seralize_table(SkipList * list, byte_buffer * buffer, sst_f_inf * s){
     if (list == NULL) return;
@@ -251,7 +294,7 @@ void seralize_table(SkipList * list, byte_buffer * buffer, sst_f_inf * s){
     int num_entry_loc = buffer->curr_bytes;
     buffer->curr_bytes+=2;
     db_unit last_entry;
-    memcpy(&s->min, node->key.entry, node->key.len);
+    memcpy(s->min, node->key.entry, node->key.len);
 
     int est_num_keys = 10 *(GLOB_OPTS.BLOCK_INDEX_SIZE/(4*1024));
     block_index  b = create_ind_stack(est_num_keys);
@@ -272,80 +315,46 @@ void seralize_table(SkipList * list, byte_buffer * buffer, sst_f_inf * s){
         }
         sum += write_db_unit(buffer, node->key);
         sum += write_db_unit(buffer, node->value);
-        map_bit(node->key.entry, b.filter);
         node = node->forward[0];
         num_entries++;
     }
     memcpy(&buffer->buffy[num_entry_loc], &num_entries, 2);
     b.len = sum;
     build_index(s, &b,buffer, num_entries, num_entry_loc);
-    memcpy(&s->max, last_entry.entry, last_entry.len);
+    memcpy(s->max, last_entry.entry, last_entry.len);
     gettimeofday(&s->time, NULL);
 }
 
-void lock_table(storage_engine * engine){
-   mem_table * table = at(engine->tables, engine->current_table);
-   table->immutable = true;
-   engine->current_table ++;
-}
-int flush_all_tables(storage_engine * engine, int flush){
-    /*swap tables asap */
-    if (engine->tables->len > flush){
-        int table_swapped = 0;
-        
-        // Keep track of which indices had their tables swapped
-        int swapped_indices[flush];
-        for (int i = 0; i < flush; i++) {
-            swapped_indices[i] = 0; // Not swapped initially
+int flush_all_tables(storage_engine * engine){
+    mem_table * table_to_flush = NULL;
+    while (memtable_queue_t_dequeue(engine->flush_queue, &table_to_flush)) {
+        if (table_to_flush != NULL) {
+             if (table_to_flush->bytes > 0) {
+                 flush_table(table_to_flush, engine);
+             }
+             clear_table(table_to_flush);
+             memtable_queue_t_enqueue(engine->ready_queue, table_to_flush);
         }
-    
-        // Perform the table swaps
-        for (; table_swapped < flush; table_swapped++){
-            int spare_index = flush + table_swapped;
-            mem_table * spare_table = at(engine->tables, spare_index);
-            if (spare_table == NULL || !spare_table->bytes) break;
-            
-            mem_table * used_table = at(engine->tables, table_swapped);
-            swap(spare_table, used_table, sizeof(mem_table));
-        
-            swapped_indices[table_swapped] = 1;
-        } 
-        /*a table was swapped, let the other threads know that a table is available*/
-        if (table_swapped > 0){
-            engine->current_table = 0;
-        }       
-        /*flush and clear all tables in the original first 'flush' positions */
-        for (int i = 0; i < flush; i++){
-            // If this index was swapped, its table is now at position (flush + i)
-            if (swapped_indices[i]) {
-                flush_table(at(engine->tables, flush + i), engine);
-                clear_table(at(engine->tables, flush + i));
-            } 
-            else {
-                flush_table(at(engine->tables, i), engine);
-                clear_table(at(engine->tables, i));
-            }
-        }      
-        return 0;
+        table_to_flush = NULL;
     }
-    
-    /*no spares exist*/
-    for (int i = 0; i < flush; i++){
-        flush_table(at(engine->tables, i), engine);
-        clear_table(at(engine->tables, i));
-    }
-    engine->current_table = 0;
     return 0;
 }
 int flush_table(mem_table *table, storage_engine * engine){
 
     meta_data * meta = engine->meta;
-  
-    sst_f_inf sst_s = create_sst_filter(table->filter);
     
-
-    sst_f_inf * sst = &sst_s;
-    byte_buffer * buffer = select_buffer(sst->length);
+    sst_f_inf *sst ;
+    /*get a heap allocated sst*/
+    {
+        if (meta->sst_files[0]->len + 1 > meta->sst_files[0]->cap){
+            expand(meta->sst_files[0]);
+        } 
+        sst_f_inf * sst_l = meta->sst_files[0]->arr;
+        sst = &sst_l[meta->sst_files[0]->len];
+        meta->sst_files[0]->len++;
+    }
+    *sst =  create_sst_filter(table->filter);
+    byte_buffer * buffer = select_buffer(GLOB_OPTS.MEM_TABLE_SIZE);
     if (table->bytes <= 0) {
         printf("DEBUG: Table bytes <= 0, skipping flush\n");
         return_struct(engine->write_pool, buffer,&reset_buffer);
@@ -368,14 +377,13 @@ int flush_table(mem_table *table, storage_engine * engine){
     db_FILE * sst_f = dbio_open(sst->file_name, 'w');
     set_context_buffer(sst_f, buffer);
     
-    size_t bytes = dbio_write(sst_f, 0, sst->length);
+    size_t bytes = dbio_write(sst_f, 0, buffer->curr_bytes);
     if (bytes < sst->length){
         return -1;
     }
     dbio_fsync(sst_f);
 
     meta->num_sst_file ++;
-    insert(meta->sst_files[0], sst);
     /*now a "used table"*/
     table->bytes = 0;
   
@@ -396,15 +404,10 @@ void free_one_table(void* table){
     table = NULL;
 }
 void dump_tables(storage_engine * engine){
-    printf("DEBUG: Starting dump_tables\n");
-    for(int i = 0;  i < engine->tables->len; i++){
-        mem_table * table = at(engine->tables, i);
-        if (table  == NULL) continue;
-        
-        if (table->bytes > 0){
-            flush_table(table, engine);
-        }
+    if (engine->active_table != NULL && engine->active_table->bytes > 0) {
+        flush_table(engine->active_table, engine);
     }
+    flush_all_tables(engine);
     printf("DEBUG: Finished dump_tables\n");
  
 }
@@ -412,8 +415,38 @@ void free_engine(storage_engine * engine, char* meta_file,  char * bloom_file){
     dump_tables(engine);
     destroy_meta_data(meta_file, bloom_file,engine->meta);  
     engine->meta = NULL;
-    free_list(engine->tables, &free_one_table);
-    kill_WAL(engine->w, request_struct(engine->write_pool));
+    // Free the active table
+    if (engine->active_table) {
+        free_one_table(engine->active_table);
+        free(engine->active_table);
+        engine->active_table = NULL;
+    }
+
+    // Free tables remaining in queues (ready queue might have tables if dump failed/skipped)
+    mem_table* temp_table = NULL;
+    if (engine->ready_queue) {
+        while (memtable_queue_t_dequeue(engine->ready_queue, &temp_table)) {
+            if (temp_table) {
+                free_one_table(temp_table);
+                free(temp_table);
+            }
+        }
+        memtable_queue_t_destroy(engine->ready_queue);
+        engine->ready_queue = NULL;
+    }
+
+    // Flush queue should be empty after dump_tables, but clean up defensively
+    if (engine->flush_queue) {
+         while (memtable_queue_t_dequeue(engine->flush_queue, &temp_table)) {
+             if (temp_table) {
+                free_one_table(temp_table);
+                free(temp_table);
+            }
+        }
+        memtable_queue_t_destroy(engine->flush_queue);
+        engine->flush_queue = NULL;
+    }
+    kill_WAL(engine->w);
     free_pool(engine->write_pool, &free_buffer);
     free_shard_controller(&engine->cach);
     free(engine);

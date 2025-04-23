@@ -51,7 +51,6 @@ typedef struct cache {
     size_t page_size;
     size_t filled_pages;
     size_t max_pages;
-    dict   *map;
     arena  *mem;
     pthread_mutex_t c_lock;
     cache_entry *frames;

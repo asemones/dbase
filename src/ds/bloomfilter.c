@@ -161,7 +161,7 @@ bloom_filter * from_stream(byte_buffer * buffy_the_buffer){
     read_buffer(buffy_the_buffer, &b->num_hash, sizeof(size_t));
     b->ba = create_bit_array(tsize);
     b->ba->size = tsize;
-    read_buffer(buffy_the_buffer, b->ba->array, tsize*sizeof(size_t));
+    read_buffer(buffy_the_buffer, b->ba->array, tsize*sizeof(uint64_t));
     return b;
 }
 bloom_filter* deep_copy_bloom_filter(const bloom_filter* original) {

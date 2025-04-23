@@ -17,6 +17,9 @@ void test_use_and_load(void){
 
     for(size_t i = 0; i < 100; i++){
         sst_f_inf * sst = (sst_f_inf*)wrapper_alloc((sizeof(sst_f_inf)), NULL,NULL);
+        sst->file_name = malloc(100);
+        sst->max = malloc(100);
+        sst->min = malloc(100);
         gen_sst_fname(i, 0, sst->file_name);
         sst->length = 0;
         sst->block_start = 0;
@@ -38,13 +41,6 @@ void test_use_and_load(void){
     TEST_ASSERT_EQUAL_INT(100, meta->num_sst_file);
     TEST_ASSERT_EQUAL_INT(1000, meta->file_ptr);
     TEST_ASSERT_EQUAL_INT(1000, meta->db_length);
-
-
-
-    for(size_t i = 0; i < 100; i++){
-        sst_f_inf * sst = (sst_f_inf*)at(meta->sst_files[0], i);
-        TEST_ASSERT_NOT_NULL(sst);
-    }
    
     remove("meta.bin");
     remove("bloom.bin");

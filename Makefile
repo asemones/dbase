@@ -1,6 +1,6 @@
 CC      := clang
-CFLAGS  := -Wall -g -m64 -I./src -gdwarf-4 -mavx
-LDFLAGS := -debug -pthread -luuid -lzstd -luring
+CFLAGS  := -Wall -g -pg -m64 -I./src -gdwarf-4 -mavx 
+LDFLAGS := -debug -pthread -luuid -lzstd -luring 
 
 OBJDIR := build
 TARGET := $(OBJDIR)/test

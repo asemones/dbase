@@ -7,6 +7,10 @@
 #include <pthread.h>
 #include "../../util/multitask.h"
 #include "../../util/io.h"
+#include <stdatomic.h>
+#include "key-value.h"
+#ifndef DB_H
+#define DB_H // Needed for db_unit
 /**
  * @brief Initializes and starts the database
  * Initializes all database components including:
@@ -20,9 +24,8 @@
 typedef struct db_shard{
     storage_engine  *lsm;
     compact_manager  * manager;
-    db_schedule  scheduler;
-    struct io_manager * io_manager;
     pthread_t thread;
+    cascade_runtime_t * rt;
 }db_shard;
 typedef struct full_db{
     db_shard * shard;
@@ -34,6 +37,17 @@ full_db * db(int num_shards);
 void db_run(full_db * db);
 void db_stop(full_db * db);
 
+typedef struct db_write_args {
+    db_shard *shard;
+    db_unit key;
+    db_unit value;
+} db_write_args;
+typedef struct db_read_args{
+    db_unit key;
+    db_shard *shard;
+} db_read_args;
+future_t db_task_write_record(void *arg);
+future_t db_task_read_record(void * arg);
 
 /**
  * @brief Shuts down the database and cleans up resources
@@ -46,8 +60,8 @@ void db_stop(full_db * db);
  * @param manager Pointer to the compaction manager to shutdown
  * @note Must be called before program exit to ensure data integrity
  */
-void db_end(storage_engine * lsm, compact_manager * manager);
-
+void db_end(db_shard * shard);
+#endif
 
 
 

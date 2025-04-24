@@ -153,16 +153,19 @@ merge_data next_entry(block_iter *b,   shard_controller * c, sst_f_inf * inf);
 /**
  * @brief Gets the next key block from an SST iterator
  * @param sst Pointer to the SST iterator
- * @param c Pointer to the shard controller
+int write_record(storage_engine *engine, db_unit key, db_unit value)
+Writes a key-value pair to the storage engine.
+
+Parameters:
+engine – A pointer to the storage engine.
+key – The key to write.
+value – The value to write.
+
+Returns:
+An integer indicating success (0) or failure (non-zero). * @param c Pointer to the shard controller
  * @return The next merge_data entry
  */
-merge_data next_key_block(sst_iter *sst, shard_controller  *c);
-/**
- * @brief Gets the next SST block from a level iterator
- * @param level Pointer to the level iterator
- * @param c Pointer to the shard controller
- * @return The next merge_data entry
- */
+merge_data next_key_block(sst_iter *sst,  shard_controller * c);
 merge_data next_sst_block(level_iter *level,   shard_controller *c);
 
 /**

@@ -14,32 +14,34 @@
 void test_init_iters(){
     clean_test_files();
     aseDB_iter * it=  create_aseDB_iter();
-    create_a_babybase();
-    storage_engine * f = create_engine("meta.bin", "bloom.bin");
-    init_aseDB_iter(it,f);
-    remove_ssts(f->meta->sst_files);
-    free_engine(f,"meta.bin", "bloom.bin");
+    // create_a_babybase(); // Don't call this, manage shard lifecycle here
+    db_shard shard = db_shard_create();
+    create_a_bigbase(&shard); // Populate the shard with data
+    init_aseDB_iter(it, shard.lsm); // Pass the lsm engine from the shard
+    remove_ssts(shard.lsm->meta->sst_files); // Get sst_files from shard's metadata
+    db_end(&shard);
     clean_test_files();
     free_aseDB_iter(it);
 }
 void test_seek(){
     aseDB_iter * it=  create_aseDB_iter();
-    create_a_babybase();
-    storage_engine * f = create_engine("meta.bin", "bloom.bin");
-   
-
-    init_aseDB_iter(it, f);
+    // create_a_babybase();
+    db_shard shard = db_shard_create();
+    create_a_bigbase(&shard);
+    init_aseDB_iter(it, shard.lsm);
     seek(it, "k");
-    clean_test_files();
-    remove_ssts(f->meta->sst_files);
+    // clean_test_files(); // Cleanup happens at the end
+    remove_ssts(shard.lsm->meta->sst_files);
     free_aseDB_iter(it);
+    db_end(&shard);
+    clean_test_files(); // Clean up files after db_end
 }
 void test_next(){
     aseDB_iter * it=  create_aseDB_iter();
-    create_a_babybase();
-    storage_engine * f = create_engine("meta.bin", "bloom.bin");
-  
-    init_aseDB_iter(it, f);
+    // create_a_babybase();
+    db_shard shard = db_shard_create();
+    create_a_bigbase(&shard);
+    init_aseDB_iter(it, shard.lsm);
     seek(it, "k");
     merge_data m = aseDB_iter_next(it);
     char * next= m.value->entry;
@@ -47,17 +49,18 @@ void test_next(){
     m = aseDB_iter_next(it);
     next = m.value->entry;
     TEST_ASSERT_EQUAL_STRING("value10",next);
-    remove_ssts(f->meta->sst_files);
-    clean_test_files();
-
+    remove_ssts(shard.lsm->meta->sst_files);
+    // clean_test_files();
     free_aseDB_iter(it);
+    db_end(&shard);
+    clean_test_files();
 }
 void test_run_scan(){
     aseDB_iter * it=  create_aseDB_iter();
-    create_a_babybase();
-    storage_engine * f = create_engine("meta.bin", "bloom.bin");
-
-    init_aseDB_iter(it, f);
+    // create_a_babybase();
+    db_shard shard = db_shard_create();
+    create_a_bigbase(&shard);
+    init_aseDB_iter(it, shard.lsm);
     seek(it, "c");
     for (merge_data next = aseDB_iter_next(it); ((char*)next.key->entry)[0] < 'k'; next = aseDB_iter_next(it)){
         TEST_ASSERT_NOT_NULL(next.value);
@@ -66,24 +69,24 @@ void test_run_scan(){
             break;
         }
     }
-    remove_ssts(f->meta->sst_files);
+    remove_ssts(shard.lsm->meta->sst_files);
     free_aseDB_iter(it);
-    free_engine(f, "meta.bin", "bloom.bin");
+    db_end(&shard);
     clean_test_files();
 }
 void test_full_table_scan_messy(){
-    storage_engine * s = create_messy_db();
+    db_shard shard = create_messy_db(); // Returns a db_shard now
     aseDB_iter * it=  create_aseDB_iter();
-    init_aseDB_iter(it,s);
+    init_aseDB_iter(it, shard.lsm); // Pass the lsm engine from the shard
     seek(it, "c");
     for(merge_data next = aseDB_iter_next(it); ;next = aseDB_iter_next(it)){
         if (next.key== EODB){
             break;
         }
     }
-    remove_ssts(s->meta->sst_files);
+    remove_ssts(shard.lsm->meta->sst_files); // Get sst_files from shard's metadata
     free_aseDB_iter(it);
-    free_engine(s, "meta.bin", "bloom.bin");
+    db_end(&shard);
     clean_test_files();
 }
 

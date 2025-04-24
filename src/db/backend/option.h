@@ -51,6 +51,8 @@ typedef struct option{
     int dict_size_ratio; /*sets the ratio of file size to dict size, will determine real dictionary size. set to 0 for no dict */
     int compress_level;
     int num_cache;
+    int num_memtable;
+    int num_to_flush;
 }option;
 
 /**
@@ -66,7 +68,7 @@ static inline void set_defaults(option * opt){
     opt->SST_TABLE_SIZE = 64 * 1024 * 1024;
     opt->MEM_TABLE_SIZE = 64 * 1024 * 1024;
     opt->SST_TABLE_SIZE_SCALAR = 1.5;
-    opt->BLOCK_INDEX_SIZE = 8 * 1024;
+    opt->BLOCK_INDEX_SIZE = 4 * 1024;
     opt->LEVEL_0_SIZE = 256 * 1024 * 1024;
     opt->LEVEL_SCALAR =2;
     opt->NUM_COMPACTOR_UNITS = 3;
@@ -82,13 +84,15 @@ static inline void set_defaults(option * opt){
     opt->BLOOM_F_N = "bloom.bin";
     opt->NUM_FILES_COMPACT_ZER0 = 5;
     opt->num_cache = 128;
+    opt->num_memtable =4;
+    opt->num_to_flush = 1;
 
 }
 static inline void set_debug_defaults(option * opt){
     opt->SST_TABLE_SIZE =  256* 1024;
     opt->MEM_TABLE_SIZE = 512 * 1024;
     opt->SST_TABLE_SIZE_SCALAR = 1;
-    opt->BLOCK_INDEX_SIZE = 8 * 1024;
+    opt->BLOCK_INDEX_SIZE = 4 * 1024;
     opt->LEVEL_0_SIZE = 400 * 1024;
     opt->LEVEL_SCALAR = 2;
     opt->NUM_COMPACTOR_UNITS = 3;
@@ -106,6 +110,8 @@ static inline void set_debug_defaults(option * opt){
     opt->dict_size_ratio = 100;
     opt->compress_level =1;
     opt->num_cache = 8;
+    opt->num_memtable =7;
+    opt->num_to_flush = 1;
 
 }
 

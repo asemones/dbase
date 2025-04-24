@@ -20,6 +20,7 @@
  */
 typedef struct byte_buffer {
     char * buffy;
+    size_t id; /*to register buffers with the kernel*/
     void * utility_ptr;
     size_t max_bytes;
     size_t curr_bytes;
@@ -133,6 +134,11 @@ void reset_buffer(void * v_buffer);
  * @param v_buffer Pointer to the byte buffer.
  */
 void free_buffer(void * v_buffer);
-
+static inline void b_seek(byte_buffer * buff, int pos){
+    buff->read_pointer = pos;
+}
+static inline void padd_buffer(byte_buffer * buffer, int to_pad){
+    buffer->curr_bytes += to_pad;
+}
 #endif
 

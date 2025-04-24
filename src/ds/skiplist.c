@@ -146,7 +146,3 @@ void freeSkipList(SkipList* list) {
 int compareInt(const void* a, const void* b) {
     return (*(int*)a - *(int*)b);
 }
-
-int compareString(const void* a, const void* b) {
-    return strcmp((const char*)a, (const char*)b);
-}

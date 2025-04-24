@@ -13,6 +13,7 @@
 #include "../../ds/threadpool.h"
 #include "../../ds/cache_shrd_mnger.h"
 #include <time.h>
+#include "../../util/io.h"
 #include <unistd.h>
 #ifndef COMPACTOR_H
 #define COMPACTOR_H
@@ -125,20 +126,12 @@ typedef struct compact_job_internal{
  * @param c Pointer to the shard controller
  */
 typedef struct compact_manager{
-    thread_p * pool [NUM_THREADP]; // just use one pool for now
     struct_pool * compact_pool;
     list ** sst_files;
     struct_pool * arena_pool;
     size_t base_level_size;
-    pthread_mutex_t * wait_mtx;
-    pthread_cond_t * wait;
-    pthread_mutex_t compact_lock;
-    pthread_mutex_t  resource_lock;
-    pthread_cond_t resource_sig;
     size_t min_compact_ratio;
     struct_pool * dict_buffer_pool;
-    struct_pool * big_buffer_pool;
-    struct_pool * compression_buffer_pool;
     frontier * job_queue;
     bool check_meta_cond;
     bool lvl0_job_running;
@@ -225,18 +218,6 @@ void complete_block(sst_f_inf * curr_sst, block_index * current_block, int block
  * @param num_block_counter Pointer to the block counter.
  */
 void reset_block_counters(int *block_b_count, int *sst_b_count);
-
-/**
- * @brief Writes blocks to a file.
- * @param dest_buffer Destination buffer.
- * @param compression Compression buffer.
- * @param dict_buffer Dictionary buffer for compression.
- * @param curr_sst Current SST file.
- * @param entrys List of entries to write.
- * @param curr_file File to write to.
- * @return Number of bytes written or error code.
- */
-int write_blocks_to_file(byte_buffer *dest_buffer, byte_buffer * compression, byte_buffer * dict_buffer, sst_f_inf* curr_sst, list * entrys, FILE *curr_file);
 
 /**
  * @brief Processes an SST file during compaction.

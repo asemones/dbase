@@ -12,6 +12,8 @@
 #include "../db/backend/key-value.h"
 #include "structure_pool.h"
 #include "../db/backend/compression.h"
+#include "../util/io.h"
+#include <immintrin.h>
 #pragma once
 
 /**
@@ -25,6 +27,8 @@ typedef struct cache_entry {
     byte_buffer *buf;
     k_v_arr *ar;
     int ref_count;
+    struct_pool * loc;
+    int idx;
 } cache_entry;
 
 /**
@@ -47,10 +51,9 @@ typedef struct cache {
     size_t page_size;
     size_t filled_pages;
     size_t max_pages;
-    dict   *map;
     arena  *mem;
     pthread_mutex_t c_lock;
-    cache_entry **frames;
+    cache_entry *frames;
     uint8_t *ref_bits;
     size_t  clock_hand;
     struct_pool * compression_buffers;
@@ -63,24 +66,15 @@ typedef struct cache {
  * @return Initialized cache structure
  */
 cache create_cache(size_t capacity, size_t page_size);
-
 /**
- * @brief Retrieves a page from the cache by its UUID
- * @param c Pointer to the cache
- * @param uuid Unique identifier for the page
- * @return Pointer to the cache entry if found, NULL otherwise
- */
-cache_entry* get_page(cache *c, const char *uuid);
-
-/**
- * @brief Retrieves or loads a cache entry for a block index
+ * @brief Retrieves or loads a cache entry for a block index. Does not retreive any other logical pages within a physical block
  * @param c Pointer to the cache
  * @param index Pointer to the block index
  * @param file_name Name of the file containing the block
  * @param sst Pointer to the SST file info containing compression info
  * @return Pointer to the cache entry
  */
-cache_entry* retrieve_entry(cache *c, block_index *index, const char *file_name, sst_f_inf *sst);
+cache_entry retrieve_entry_no_prefetch(cache *c, block_index *index, const char *file_name, sst_f_inf *sst);
 
 /**
  * @brief Pins a page in the cache to prevent eviction

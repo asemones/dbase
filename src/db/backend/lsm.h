@@ -2,7 +2,8 @@
 #include <stdio.h>
 #include "../../ds/bloomfilter.h"
 #include "dal/metadata.h"
-#include "../../ds/list.h"
+// #include "../../ds/list.h" // Replaced with circular queue
+#include "../../ds/circq.h"
 #include "../../ds/hashtbl.h"
 #include <time.h>
 #include <string.h>
@@ -21,11 +22,9 @@
 #ifndef LSM_H
 #define LSM_H
 
-#define MEMTABLE_SIZE 80000
 #define TOMB_STONE "-"
-#define NUM_HASH 7
+#define NUM_HASH 5
 #define LOCKED_TABLE_LIST_LENGTH 2
-#define CURRENT_TABLE 0
 #define PREV_TABLE 1
 #define READER_BUFFS 10
 #define WRITER_BUFFS 10
@@ -64,6 +63,9 @@ typedef struct mem_table{
     SkipList *skip;
 }mem_table;
 
+// Forward declare storage_engine for the macro
+typedef struct storage_engine storage_engine;
+
 /**
  * @brief Structure representing the storage engine.
  * @struct storage_engine
@@ -77,25 +79,30 @@ typedef struct mem_table{
  * @param compactor_wait_mtx Mutex for compaction waiting.
  * @param cm_ref Flag indicating if compaction is in progress.
  * @param error_code Error code for the storage engine.
+ * @param memtable_queue Queue managing immutable and ready memtables.
  */
-typedef struct storage_engine{
-    mem_table * table[LOCKED_TABLE_LIST_LENGTH];
+// Define the circular queue type for mem_table pointers
+DEFINE_CIRCULAR_QUEUE(mem_table*, memtable_queue_t)
+
+struct storage_engine{
+    mem_table * active_table;        // The table currently accepting writes
+    memtable_queue_t * ready_queue;  // Queue of cleared tables ready for use
+    memtable_queue_t * flush_queue;  // Queue of immutable tables waiting to be flushed
     meta_data * meta;
-    size_t num_table;
+    size_t num_table;           // Total number of tables managed (active + queued)
     struct_pool * write_pool;
     shard_controller cach;
     WAL * w;
-    pthread_cond_t * compactor_wait;
-    pthread_mutex_t * compactor_wait_mtx;
     bool * cm_ref;
     int error_code;
-}storage_engine;
+    struct_pool *sst_info_pool; // Pool for temporary sst_f_inf structs used during flush
+};
 
 /**
  * @brief Locks the current memory table for writing.
  * @param engine A pointer to the storage engine.
  */
-void lock_table(storage_engine * engine);
+// void lock_table(storage_engine * engine); // Logic integrated into write_record/flush
 
 /**
  * @brief Creates a new memory table.
@@ -197,13 +204,13 @@ void seralize_table(SkipList * list, byte_buffer * buffer, sst_f_inf * s);
  * @param engine A pointer to the storage engine.
  * @return An integer indicating success (0) or failure (non-zero).
  */
-int flush_table(storage_engine * engine);
+int flush_table(mem_table * table, storage_engine * engine);
 
 /**
  * @brief Frees the memory allocated for a single memory table.
  * @param table A pointer to the memory table to free.
  */
-void free_one_table(mem_table * table);
+void free_one_table(void* table);
 
 /**
  * @brief Dumps the contents of the memory tables to disk.
@@ -212,18 +219,14 @@ void free_one_table(mem_table * table);
 void dump_tables(storage_engine * engine);
 
 /**
- * @brief Frees the memory allocated for all memory tables.
- * @param engine A pointer to the storage engine.
- */
-void free_tables(storage_engine * engine);
-
-/**
  * @brief Frees the memory allocated for the storage engine.
  * @param engine A pointer to the storage engine.
  * @param meta_file The path to the metadata file.
  * @param bloom_file The path to the bloom filter file.
  */
 void free_engine(storage_engine * engine, char * meta_file, char * bloom_file);
+
+int flush_all_tables(storage_engine * engine);
 
 #endif
 

@@ -11,9 +11,10 @@ char ** scan(storage_engine * engine, char * start, char * end){
     snapshot *temp_snap = engine->meta->current_tx_copy;
     ref_snapshot(engine->meta->current_tx_copy);
     aseDB_iter * iter = create_aseDB_iter();
-    init_aseDB_iter(&iter, engine);
+    init_aseDB_iter(iter, engine);
     //implement scan_records
     //return scan_records(engine, start, end);
     
     deref_with_free(temp_snap);
+    return NULL;
 }

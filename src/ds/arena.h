@@ -2,6 +2,8 @@
 #pragma once
 #include <stdlib.h>
 #include <string.h>
+#include "structure_pool.h"
+#include "../util/maths.h"
 
 /**
  * @brief Memory arena for efficient memory allocation
@@ -15,7 +17,9 @@ typedef struct arena {
     size_t size;
     size_t capacity;
     void *data;
-    void *next;
+    struct arena * next;
+    struct arena * cursor;
+    bool free;
 }
 arena;
 /**
@@ -51,3 +55,5 @@ void *arena_alloc(arena *a, size_t size);
  * @param a Pointer to the arena to free
  */
 void free_arena(void *a);
+void return_arena(arena * a, struct_pool * pool);
+void *arena_alloc_expand(arena *a, size_t size, struct_pool * src);

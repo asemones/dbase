@@ -1,4 +1,80 @@
 implement the io-uring write engine
+implement scheduling with coroutines
+//complete both by march 14th, fully tested and intergrated
 consider key-value seperation
 iterator filters
 cache line bloom filters
+merge codebase with new scheduler features
+
+requirements:
+1. change cache to the new model
+    since everything now needs to be alligned to 4kb pages even with compression, this presents 
+    a challenge. find a fix
+    fixed!
+2. route all requests thru the io io_manager
+3. change compactor to function with new system 
+4. remove all old synchronization
+
+
+the way the db may be interacted with: compactor operations, read/write. api calls
+become tasks in the scheduler, and the compactor scheduler will just get ran with compactions then becoming
+subtasks.
+figure out how to return values from one shard
+just submit tasks to shards, nothing fancy, task function should be the same
+if doing distributed tx
+
+
+figure out how the fuck to do cache with the force 4kb read size, zero copy, no long waits
+either get rid of compression, or add a logical to physical compression map that gets filled on 
+Solved without a linked list or a map or high compute- a little tacky though
+
+figure out cascade api 
+cases for tasks:
+a task is submitted on a calling thread NOT apart of cascade. Here, the return value is left to the caller to Solved
+a task is submitted on the same thread as the runtime. Here, we may do a special kind of yield that awaits the result of this task, or multiple task
+via a fork join (SOLVED)
+a task is submitted on a calling thread apart of a different runtime in cascade. Here, we may use an interruptable return to await the task, or multiple task
+via a fork join. There are several ways to solve this one. here are the cases:
+
+case WAIT: 
+    sender calls a rpc and waits
+    recv recieves and submits into framework
+    recv task completes. flag is marked indicating its a wait case
+    recv somehow sends a message to the sender shard with the return value
+    sender resumes with new return value
+case NOWAIT
+    sender calls a rpc and immediately returns
+    recv recieves and submits into framework
+    recv task completes. flag is marked indicating NOWAIT
+    recv sends message to sender shard indicating this
+    sender shard then ???
+
+db_schedule* schedule
+
+
+we can do a queue with "active" indexs (or just the raw ptrs)
+fix how ids are mapped to inbox indices
+intergrate wal with new system
+change the wal to be n segemented files that acts like a ring buffer
+figure out how to handle tasks "overflowing"
+done
+preformance optimizations: runs like utter garbage
+need to figure out how to reduce the active queue size
+AND accurate waits without a deadlock
+
+preformance targets:
+scheduler overhead is not great
+way too much time spent hashing stuff
+move skiplist to an arena or even consider replacing it as a memetable-> very slow
+considering removing all state from function returns, bad. heres how it maybe? could be done
+
+1. internal waits can just return the tasks future. Easy peasy
+2. Internal nowaits have to do the following: allocate a memory location for storing the future itself,
+and return the address of that location. For this, we can use the addr it is slotted into for the task. Check 
+if parent exists. if so, sub val. have the task store its future in a memory address passed to it by the parent
+
+2. exterrnal requests can just use future pointers
+3. cross core commuincation is much harder
+
+
+fix cache removal/free

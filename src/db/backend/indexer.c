@@ -21,6 +21,9 @@ sst_f_inf create_sst_empty(){
     init_sst_compr_inf(&file.compr_info, NULL);
     gettimeofday(&file.time, NULL);
     file.compressed_len = 0;
+    file.max = arena_alloc(file.mem_store, MAX_KEY_SIZE);
+    file.min = arena_alloc(file.mem_store, MAX_KEY_SIZE);
+    file.file_name = arena_alloc(file.mem_store, MAX_F_N_SIZE);
     return file;
 
 }
@@ -37,8 +40,25 @@ sst_f_inf create_sst_filter(bloom_filter * b){
     init_sst_compr_inf(&file.compr_info, NULL);
     file.compressed_len = 0;
     gettimeofday(&file.time, NULL);
+    file.max = arena_alloc(file.mem_store, MAX_KEY_SIZE);
+    file.min = arena_alloc(file.mem_store, MAX_KEY_SIZE);
+    file.file_name = arena_alloc(file.mem_store, MAX_F_N_SIZE);
     return file;
 
+}
+bool use_compression(sst_f_inf * f){
+    return (f->compressed_len > 0 );
+}
+inline int num_blocks_in_pg(block_index * blocks){
+    int start= 0;
+    while(blocks[start].type != PHYSICAL_PAGE_HEADER){
+        start --;
+    }
+    int start_num = start;
+    while(blocks[start].type != PHYSICAL_PAGE_END){
+        start ++;
+    }
+    return (start - start_num + 1);
 }
 int sst_deep_copy(sst_f_inf * master, sst_f_inf * copy){
     if (master == NULL) return 0;
@@ -53,17 +73,12 @@ int sst_deep_copy(sst_f_inf * master, sst_f_inf * copy){
         if (master_b == NULL) continue;
         block_index ind;
         ind.min_key = arena_alloc(copy->mem_store, 40);
-        ind.uuid = arena_alloc(copy->mem_store, 32);
         ind.checksum =master_b->checksum;
         ind.len = master_b->len;
         ind.num_keys = master_b->num_keys;
         ind.offset = master_b->offset;
+        ind.type = master_b->type;
         memcpy(ind.min_key, master_b->min_key, 40);
-        memcpy(ind.uuid,master_b->uuid, 32);
-        ind.filter = deep_copy_bloom_filter(master->filter);
-        if (ind.filter == NULL){
-            return STRUCT_NOT_MADE;
-        }
         insert(copy->block_indexs, &ind);
     }
     copy->marked = master->marked;
@@ -79,47 +94,38 @@ int sst_deep_copy(sst_f_inf * master, sst_f_inf * copy){
 block_index * create_block_index(size_t est_num_keys){
     block_index * index = (block_index*)wrapper_alloc((sizeof(block_index)), NULL,NULL);
     if (index== NULL) return NULL;
-    index->filter = bloom(NUM_HASH_SST, est_num_keys, false, NULL);
-    if (index->filter == NULL){
-        free(index);
-        return NULL;
-    }
     index->min_key = NULL;
-    index->len = 0; 
+    index->len = 0;
     index->num_keys =0;
-    index->uuid = NULL;
+    index->type = PHYSICAL_PAGE_HEADER;
+    index->page = NULL;
     return index;
 }
 block_index create_ind_stack(size_t  est_num_keys){
     block_index index;
-    index.filter = bloom(NUM_HASH_SST, est_num_keys, false, NULL);
     index.min_key = NULL;
-    index.len = 0; 
-    index.num_keys  =0;
-    index.uuid =  NULL;
+    index.len = 0;
+    index.num_keys =0;
+    index.type = PHYSICAL_PAGE_HEADER;
+    index.page = NULL;
     return index;
 }
 block_index * block_from_stream(byte_buffer * stream, block_index * index){
     read_buffer(stream, &index->offset, sizeof(size_t));
-    index->filter = from_stream(stream);
-    if (index->filter == NULL){
-        return NULL;
-    } 
     read_buffer(stream,index->min_key, 40);
-    read_buffer(stream, index->uuid, 40);
     read_buffer(stream, &index->len, sizeof(size_t));
     read_buffer(stream, &index->num_keys, sizeof(index->num_keys));
     read_buffer(stream, &index->checksum, sizeof(index->checksum));
+    read_buffer(stream, &index->type, sizeof(index->type));
     return index;
 }
 int block_to_stream(byte_buffer * targ, block_index * index){
     int result = write_buffer(targ, (char*)&index->offset, sizeof(size_t));
-    copy_filter(index->filter, targ);
     result = write_buffer(targ,index->min_key,40);
-    result = write_buffer(targ,index->uuid, 40);
-    result = write_buffer(targ, (char*)&index->len, sizeof(size_t)); 
+    result = write_buffer(targ, (char*)&index->len, sizeof(size_t));
     result = write_buffer(targ, &index->num_keys, sizeof(&index->num_keys));
     result = write_buffer(targ, &index->checksum, sizeof(index->checksum));
+    result = write_buffer(targ, &index->type, sizeof(index->type));
     return result;
 }
 int read_index_block(sst_f_inf * file, byte_buffer * stream)
@@ -142,8 +148,7 @@ int read_index_block(sst_f_inf * file, byte_buffer * stream)
     for (int i =0; i < file->block_indexs->len; i++){
         block_index * index = (block_index*)at(file->block_indexs, i);
         index->min_key = (char*)arena_alloc(file->mem_store, 40);
-        index->uuid = (char*)arena_alloc(file->mem_store, 40);
-        if (index->min_key == NULL || index->uuid == NULL){
+        if (index->min_key == NULL){
             return FAILED_ARENA;
         }
         block_index * ret = block_from_stream(stream, index);
@@ -174,18 +179,19 @@ int all_index_stream(size_t num_table, byte_buffer* stream, list * indexes){
 void free_block_index(void * block){
     block_index * index = (block_index*)block;
     if (index == NULL) return;
-    free_filter(index->filter);
     free(index->min_key);
     free(index);
 }
 void reuse_block_index(void * b){
     block_index * index = (block_index*)b;
     if (index == NULL) return;
-    free_filter(index->filter);
-    index->filter = NULL;
-    index->min_key = NULL;
+    // free_filter(index->filter); // Assuming free_filter handles NULL
+    // index->filter = NULL; // Already removed
+    index->min_key = NULL; // Keep this if min_key should be reset
     index->len = 0;
     index->num_keys = 0;
+    index->type = PHYSICAL_PAGE_HEADER;
+    index->page = NULL;
 }
 int cmp_sst_f_inf(void* one, void * two){
     sst_f_inf * info1 = one;
@@ -222,14 +228,12 @@ void generate_unique_sst_filename(char *buffer, size_t buffer_size, int level) {
     uint32_t r2 = (uint32_t)rand();
     uint64_t random_val = ((uint64_t)r1 << 32) | r2;
 
-    snprintf(buffer, buffer_size, "sst_%d_%ld_%ld_%016llx",
+    snprintf(buffer, buffer_size, "sst_%d_%ld_%ld_%016lx",
              level, tv.tv_sec, tv.tv_usec, random_val);
 }
 void build_index(sst_f_inf * sst, block_index * index, byte_buffer * b, size_t num_entries, size_t block_offsets){
 
     index->offset = block_offsets;
-    index->uuid = arena_alloc(sst->mem_store,40);
-    grab_uuid(index->uuid);
     u_int16_t key_len;
     if (b){
         index->min_key = (char*)arena_alloc(sst->mem_store, 40);

@@ -127,7 +127,7 @@ void get_result(thread * p , thrd_pq_value work_item);
  *
  * @param p Pointer to the thread pool.
  */
-void kill(thread_p * p);
+void kill_thr(thread_p * p);
 
 /**
  * @brief Destroys the thread pool and frees all associated resources.

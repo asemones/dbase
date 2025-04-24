@@ -11,10 +11,8 @@ static cache_entry create_cache_entry(size_t page_size, size_t num_keys, arena *
     entry.ar->cap    = num_keys;
     entry.ar->len    = 0;
     entry.ref_count  = 0;
+    entry.loc = NULL;
     return entry;
-}
-void back_cache(struct io_manager * m, cache * c){
-    
 }
 cache create_cache(size_t capacity, size_t page_size) {
     cache c;
@@ -137,12 +135,13 @@ void pin_page(cache_entry *c) {
 
 void unpin_page(cache_entry *c) {
     __sync_fetch_and_sub(&c->ref_count, 1);
-    if (c->ref_count <= 0 && c->idx > 0 ){
+    if (c->ref_count <= 0 && c->loc == NULL ){
         return_struct(man->four_kb, c->buf, NULL);
         c = NULL; // Assuming 'buffer' is the pointer corresponding to 'c->idx' and no reset needed
     }
     else if (c->ref_count <=0){
         return_struct(c->loc, c->buf, &reset_buffer);
+        c->loc = NULL;
         c = NULL;
     }
 }

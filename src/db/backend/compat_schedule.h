@@ -6,6 +6,7 @@
 #include "option.h"
 #include <pthread.h>
 #include <time.h>
+#include "../../util/multitask.h"
 
 
 /**
@@ -17,6 +18,7 @@
 typedef struct compact_tble_info{
     compact_manager * cm;
     compact_job_internal job;
+    struct_pool * pool;
 }compact_tble_info;
 
 /**
@@ -57,7 +59,7 @@ int find_compact_friend(list * next_level, list * list_to_merge, sst_f_inf * vic
  * @param null_ret Unused return value pointer.
  * @param thrd Pointer to the thread executing the merge.
  */
-void merge_wrapper(void * info, void ** null_ret, thread * thrd);
+future_t merge_wrapper(void * arg);
 
 /**
  * @brief Checks which levels need compaction.
@@ -87,12 +89,12 @@ int create_jobs(compact_manager * cm, int levels[]);
  * @param cm Pointer to the compaction manager.
  * @return 0 on success, error code on failure.
  */
-int start_jobs(compact_manager * cm);
 
+int start_jobs(struct_pool * pool, compact_manager* cm, uint16_t num);
 /**
  * @brief Main function for the compactor thread.
  * @param cm_thrd Pointer to the compaction manager.
  * @param null_ret Unused return value pointer.
  * @param pool Pointer to the thread executing the compactor.
  */
-void run_compactor(void * cm_thrd, void ** null_ret, thread * pool);
+future_t run_compactor(compactor_args * args);

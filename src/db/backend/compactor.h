@@ -15,23 +15,11 @@
 #include <time.h>
 #include "../../util/io.h"
 #include <unistd.h>
+#include "../../util/multitask.h"
 #ifndef COMPACTOR_H
 #define COMPACTOR_H
 #define NUM_THREADP 1
-/**
- * @brief Structure containing information about a compaction operation
- * @struct compact_infos
- * @param time_stamp Timestamp of when the compaction was initiated
- * @param buffer Buffer used during compaction
- * @param sst_file Pointer to the SST file being compacted
- * @param complete Flag indicating if compaction is complete
- */
-typedef struct compact_infos{
-    char time_stamp[20];
-    byte_buffer * buffer;
-    sst_f_inf * sst_file;
-    bool complete;
-}compact_infos;
+
 /**
  * @brief Enumeration of compaction operation statuses
  * @enum compact_status
@@ -93,7 +81,6 @@ If needed utilize a thread from the threadpool to complete the job
  */
 typedef struct compact_job_internal{
     size_t id;
-    size_t index;
     size_t start_level;
     size_t end_level;
     size_t working_files;
@@ -126,9 +113,7 @@ typedef struct compact_job_internal{
  * @param c Pointer to the shard controller
  */
 typedef struct compact_manager{
-    struct_pool * compact_pool;
     list ** sst_files;
-    struct_pool * arena_pool;
     size_t base_level_size;
     size_t min_compact_ratio;
     struct_pool * dict_buffer_pool;
@@ -153,7 +138,6 @@ void free_cm(compact_manager * manager);
  * @param page_size Size of the page buffer.
  * @return Pointer to the newly created compaction info.
  */
-compact_infos* create_ci(size_t page_size);
 
 /**
  * @brief Sets the SST files in the compaction manager from metadata.
@@ -304,13 +288,6 @@ void compact_one_table(compact_manager * cm, compact_job_internal job, sst_f_inf
  * @param old_ssts List of old SST files.
  */
 void integrate_new_tables(compact_manager *cm, compact_job_internal *job, list *old_ssts);
-
-/**
- * @brief Frees a compaction info structure.
- * @param ci Pointer to the compaction info to free.
- */
-void free_ci(void * ci);
-
 /**
  * @brief Shuts down the compaction manager.
  * @param cm Pointer to the compaction manager.

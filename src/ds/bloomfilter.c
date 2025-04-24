@@ -151,6 +151,9 @@ void free_filter( void*filter){
     free(b);
     b = NULL;
 }
+void reset_filter(bloom_filter * f){
+    memset(f->ba->array, 0, f->ba->size);
+}
 bloom_filter * from_stream(byte_buffer * buffy_the_buffer){
     bloom_filter * b = (bloom_filter*)wrapper_alloc((sizeof(bloom_filter)), NULL,NULL);
     size_t tsize;

@@ -3,8 +3,8 @@
 #include "skiplist.h"
 
 db_unit dummy = {0, NULL};
-Node* create_skiplist_node(int level, db_unit key, db_unit value) {
-    Node* node = (Node*)malloc(sizeof(Node) + level * sizeof(Node*));
+Node* create_skiplist_node(int level, db_unit key, db_unit value, arena * allocator) {
+    Node* node = arena_alloc_expand(allocator, sizeof(Node) + level * sizeof(Node*), NULL);
     if (node == NULL) return NULL;
     node->key = key;
     node->value = value;
@@ -14,20 +14,19 @@ Node* create_skiplist_node(int level, db_unit key, db_unit value) {
     return node;
 }
 
-SkipList* create_skiplist(int (*compare)(const void*, const void*)) {
+SkipList* create_skiplist(int max_nodes,int (*compare)(const void*, const void*)) {
     SkipList* list = (SkipList*)malloc(sizeof(SkipList));
     if (list == NULL) return NULL;
     list->level = 1;
     list->compare = compare;
-    list->header = create_skiplist_node(MAX_LEVEL, dummy, dummy);
+    list->arena = malloc_arena(max_nodes * sizeof(Node) + MAX_LEVEL * sizeof(Node *));
+    list->header = create_skiplist_node(MAX_LEVEL, dummy, dummy, list->arena);
     if (list->header == NULL){
         free(list);
         return NULL;
     }
     return list;
 }
-
-
 int random_level() {
     int level = 1;
     while ((rand() & 1) && level < MAX_LEVEL) {
@@ -67,7 +66,7 @@ int insert_list(SkipList* list, db_unit key, db_unit value) {
         list->level = level;
     }
 
-    Node* newNode = create_skiplist_node(level, key, value );
+    Node* newNode = create_skiplist_node(level, key, value, list->arena);
     if (newNode == NULL){
         return STRUCT_NOT_MADE;
     }
@@ -131,6 +130,10 @@ void delete_element(SkipList* list, void* key) {
             list->level--;
         }
     }
+}
+void reset_skip_list(SkipList* list){
+    reset_expanded_arena(list->arena);
+    list->header = create_skiplist_node(MAX_LEVEL, dummy, dummy, list->arena);
 }
 void freeSkipList(SkipList* list) {
     if (list == NULL || list->header == NULL) return;

@@ -57,3 +57,4 @@ void *arena_alloc(arena *a, size_t size);
 void free_arena(void *a);
 void return_arena(arena * a, struct_pool * pool);
 void *arena_alloc_expand(arena *a, size_t size, struct_pool * src);
+void reset_expanded_arena(arena * a);

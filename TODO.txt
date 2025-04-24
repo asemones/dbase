@@ -76,5 +76,11 @@ if parent exists. if so, sub val. have the task store its future in a memory add
 2. exterrnal requests can just use future pointers
 3. cross core commuincation is much harder
 
+determine how the compactor should operate:
 
-fix cache removal/free
+1. need yield points within singular compactions-> can use std reads for this. O(n) worst case
+2. need a way to dispatch tacks at a high frequency 
+3. need an easy way to throttle (maybe a second queue in the task manager for priority tasks?)
+4. fuck off with the copying. 1x for moving into compression buffer, 1x for compression AT MOST
+5. remove all of the multithreading infra
+6. 

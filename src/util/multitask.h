@@ -208,4 +208,5 @@ uint64_t cascade_rpc_nowait(cascade_runtime_t * targ, task_func func, void * arg
 void end_runtime(cascade_runtime_t * rt);
 void * pad_allocate(uint64_t size);
 future_t get_return_val(uint64_t id);
+void intern_wait_for_x(uint32_t num);
 #endif 

@@ -45,9 +45,6 @@ full_db * db(int num_shards){
     }
     return db;
 }
-
-
-
 future_t db_task_write_record(void *arg) {
     db_write_args *write_args = (db_write_args *)arg;
     
@@ -78,3 +75,4 @@ void db_end(db_shard * shard) {
     end_runtime(shard->rt);
     
 }
+

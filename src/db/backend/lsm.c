@@ -1,5 +1,4 @@
 #include "lsm.h"
-#define MEMTABLE_SIZE 80000
 #define TOMB_STONE "-"
 #define LOCKED_TABLE_LIST_LENGTH 2
 #define PREV_TABLE 1
@@ -38,11 +37,13 @@ int restore_state(storage_engine * e ,int lost_tables){
     WAL* w = e->w;
 }
 void clear_table(mem_table * table){
-    if (table->skip != NULL) freeSkipList(table->skip);
-    if (table->num_pair <= 0  && table->filter!=NULL) free_filter(table->filter);
+  
+
+    reset_skip_list(table->skip);
+    reset_filter(table->filter);
+
     table->skip = create_skiplist(&compareString);
     table->bytes = 0;
-    table->filter = bloom(NUM_HASH,NUM_WORD,false, NULL);
     table->num_pair = 0;
     table->immutable = false;
     for(int i = 0 ; i < 2; i++){
@@ -398,7 +399,7 @@ int flush_table(mem_table *table, storage_engine * engine){
 void free_one_table(void* table){
     mem_table * m_table= table;
    
-    freeSkipList(m_table->skip);;
+    freeSkipList(m_table->skip);
     if (m_table->num_pair <= 0) free_filter(m_table->filter);
     else free(m_table->filter);
     table = NULL;

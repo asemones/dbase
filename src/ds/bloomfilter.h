@@ -131,5 +131,6 @@ void copy_filter(bloom_filter * filter, byte_buffer* buffer);
  * @return Pointer to the newly created deep copy.
  */
 bloom_filter* deep_copy_bloom_filter(const bloom_filter* original);
+void reset_filter(bloom_filter * f);
 #endif
 

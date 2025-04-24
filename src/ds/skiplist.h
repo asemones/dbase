@@ -6,6 +6,7 @@
 #include "byte_buffer.h"
 #include "../db/backend/key-value.h"
 #include "../util/error.h"
+#include "arena.h"
 
 #pragma once
 
@@ -32,6 +33,7 @@ typedef struct Node {
 typedef struct SkipList {
     int level;
     Node* header;
+    arena * arena;
     int (*compare)(const void*, const void*);
 } SkipList;
 
@@ -121,3 +123,4 @@ int compareInt(const void* a, const void* b);
 static inline int compareString(const void* a, const void* b) {
     return strcmp((const char*)a, (const char*)b);
 }
+void reset_skip_list(SkipList* list);

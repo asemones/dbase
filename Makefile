@@ -1,5 +1,5 @@
 CC      := clang
-CFLAGS  := -Wall -g -pg -m64 -I./src -gdwarf-4 -mavx 
+CFLAGS  := -Wall -g -pg -m64 -O3 -I./src -gdwarf-4 -mavx 
 LDFLAGS := -debug -pthread -luuid -lzstd -luring 
 
 OBJDIR := build
@@ -14,7 +14,7 @@ SRCS += src/tests/testrunner.c
 SRCS += src/tests/unity/src/unity.c
 SRCS += src/util/io.c
 SRCS += src/util/aco.c
-SRCS += src/util/multitask.c
+SRCS += src/util/multitask.c 
 
 # Add assembly file
 ASM_SRCS := src/util/acosw.S

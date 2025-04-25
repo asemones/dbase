@@ -142,8 +142,9 @@ void cascade_submit_external(cascade_runtime_t * rt, future_t * mem_loc, _Atomic
     }
     new_task->ret.parent_ptr = mem_loc;
     new_task->wait_counter = wait_counter;
-    // Atomically increment the counter. Relaxed ordering is usually sufficient for a simple counter increment.
-    atomic_fetch_add_explicit(new_task->wait_counter, 1, memory_order_relaxed);
+    if (wait_counter){
+        atomic_fetch_add_explicit(new_task->wait_counter, 1, memory_order_relaxed);
+    }
     return;
 }
 future_t cascade_sub_intern_wait(task_func func, void* arg) {
@@ -542,6 +543,7 @@ typedef struct runtime_spawn_args{
     bool done;
 } runtime_spawn_args;
 void spawn_runtime_internal(void * arg){
+      aco_thread_init(NULL); 
       runtime_spawn_args * args = arg;
       const double rpc_overhead = 1.2;
       io_config config=  args->config;

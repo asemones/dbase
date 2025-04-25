@@ -136,7 +136,7 @@ void pin_page(cache_entry *c) {
 void unpin_page(cache_entry *c) {
     __sync_fetch_and_sub(&c->ref_count, 1);
     if (c->ref_count <= 0 && c->loc == NULL ){
-        return_struct(man->four_kb, c->buf, NULL);
+        return_struct(man->four_kb, c->buf, &reset_buffer);
         c = NULL; // Assuming 'buffer' is the pointer corresponding to 'c->idx' and no reset needed
     }
     else if (c->ref_count <=0){

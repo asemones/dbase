@@ -108,62 +108,62 @@ void reset_block_counters(int *block_b_count, int *sst_b_count){
     *block_b_count = 2;
     *sst_b_count +=2;
 }
-int write_blocks_to_file(byte_buffer *dest_buffer, byte_buffer * compression, byte_buffer * dict_buffer, sst_f_inf* curr_sst, list * entrys, db_FILE *curr_file) {
+int write_blocks_to_file(byte_buffer *dest_buffer, byte_buffer * compression_buffer, byte_buffer * dict_buffer, sst_f_inf* curr_sst, list * entrys, db_FILE *curr_file) {
     int keys = 0;
     int skipped = 0;
-    if (compression->max_bytes < GLOB_OPTS.SST_TABLE_SIZE){
+
+
+    if (compression_buffer == NULL || compression_buffer->max_bytes < GLOB_OPTS.SST_TABLE_SIZE){
         curr_sst->use_dict_compression = false;
     }
     else{
         curr_sst->use_dict_compression = true;
     }
-    bool compress = (GLOB_OPTS.compress_level > -5);
+    bool compress = (GLOB_OPTS.compress_level > -5) && curr_sst->use_dict_compression;
+
+    byte_buffer *initial_write_buffer = compress ? compression_buffer : dest_buffer;
+    reset_buffer(initial_write_buffer);
+
     for (int i = 0; i < curr_sst->block_indexs->len; i++) {
         block_index *ind = at(curr_sst->block_indexs, i);
-        int loc = dest_buffer->curr_bytes;
-        write_buffer(dest_buffer, (char*)&ind->num_keys, 2);
-        keys = dump_list_ele(entrys, &write_db_entry, dest_buffer, ind->num_keys, keys);
-        grab_min_b_key(ind, dest_buffer, loc);
-        if (!strcmp("common10231", ind->min_key)){
-            int l = 0;
-            l++;
-        }
+        int loc = initial_write_buffer->curr_bytes; 
+
+        write_buffer(initial_write_buffer, (char*)&ind->num_keys, 2);
+        keys = dump_list_ele(entrys, &write_db_entry, initial_write_buffer, ind->num_keys, keys);
+        grab_min_b_key(ind, initial_write_buffer, loc);
+
         if (is_avx_supported()){
-            ind->checksum =  crc32_avx2((uint8_t*)buf_ind(dest_buffer, loc), ind->len);
+            ind->checksum =  crc32_avx2((uint8_t*)buf_ind(initial_write_buffer, loc), ind->len);
         }
         else{
-            ind->checksum = crc32((uint8_t*)buf_ind(dest_buffer, loc), ind->len);;
+            ind->checksum = crc32((uint8_t*)buf_ind(initial_write_buffer, loc), ind->len);
         }
-        if (ind->checksum ==  2561137012){
-            FILE * log = fopen("log.txt", "wb+");
-            fwrite(buf_ind(dest_buffer, loc), ind->len, 1, log);
+        ind->offset = loc;
+
+        if (!compress) {
+            int bytes_to_skip = GLOB_OPTS.BLOCK_INDEX_SIZE - (initial_write_buffer->curr_bytes - loc);
+            skipped += bytes_to_skip;
+            initial_write_buffer->curr_bytes += bytes_to_skip;
         }
-        printf("Writing block checksum: %u for len: %zu at offset: %d\n",
-        ind->checksum, ind->len, loc);
-        /*set the offset properly because we are no longer skippin gbytes. this will get updated later in compression func*/
-        ind->offset = dest_buffer->curr_bytes - ind->len;
-        if (compress) continue;
-        /*zero point in skipping bytes for compressed blocks*/
-        int bytes_to_skip = GLOB_OPTS.BLOCK_INDEX_SIZE - (dest_buffer->curr_bytes - loc);
-        skipped += bytes_to_skip;
-        dest_buffer->curr_bytes += bytes_to_skip;
     }
-    curr_sst->length = dest_buffer->curr_bytes;
-    if (compress){
-        handle_compression(curr_sst, dest_buffer, compression,dict_buffer);
-        curr_sst->compressed_len = compression->curr_bytes;
-        dbio_write(curr_file, 0, compression->curr_bytes);
-        curr_sst->block_start = curr_sst->compressed_len;
+    curr_sst->length = initial_write_buffer->curr_bytes;
+    if (compress) {
+        reset_buffer(dest_buffer); // Prepare dest buffer for compressed output
+        // Assumes handle_compression compresses from compression_buffer to dest_buffer
+        // AND updates ind->offset for each block within curr_sst->block_indexs based on compressed layout
+        handle_compression(curr_sst, compression_buffer,dest_buffer, dict_buffer);
+        curr_sst->compressed_len = dest_buffer->curr_bytes;
+        curr_sst->block_start = curr_sst->compressed_len; // Metadata starts after compressed data
+    } else {
+        // If not compressing, dest_buffer already holds the final data and offsets are correct.
+        curr_sst->compressed_len = 0;
+        curr_sst->block_start = curr_sst->length; // Metadata starts after uncompressed data
     }
-    else{
-        dbio_write(curr_file, 0, dest_buffer->curr_bytes);
-    }
+    curr_sst->block_start = dbio_write(curr_file, 0, dest_buffer->curr_bytes);
     dbio_fsync(curr_file);
-    dbio_close(curr_file);
     return skipped;
 }
-void process_sst(byte_buffer *dest_buffer, sst_f_inf *curr_sst, FILE *curr_file, compact_job_internal*job, int sst_b_count) {
-    curr_sst->block_start = ftell(curr_file);
+void process_sst(byte_buffer *dest_buffer, sst_f_inf *curr_sst, db_FILE * curr_file ,compact_job_internal*job, int sst_b_count) {
     reset_buffer(dest_buffer);
     block_index * b_0= at(curr_sst->block_indexs,0);
     memcpy(curr_sst->min, b_0->min_key, 40);
@@ -171,18 +171,14 @@ void process_sst(byte_buffer *dest_buffer, sst_f_inf *curr_sst, FILE *curr_file,
         block_to_stream(dest_buffer, at(curr_sst->block_indexs, i));
     }
     copy_filter(curr_sst->filter, dest_buffer);
-
-    /*write bloom filters/file metadata*/
-    write_wrapper(dest_buffer->buffy, dest_buffer->curr_bytes, 1, curr_file);
-    /*then write our dictionary data if applicable*/
     if (curr_sst->compr_info.dict_len > 0){
-        curr_sst->compr_info.dict_offset = ftell(curr_file);
-        write_wrapper(curr_sst->compr_info.dict_buffer, 1, curr_sst->compr_info.dict_len, curr_file);
+        write_buffer(dest_buffer, curr_sst->compr_info.dict_buffer, curr_sst->compr_info.dict_len);
     }
-    fflush(curr_file);
-    fsync(curr_file->_fileno);
-    fclose(curr_file);
-    reset_buffer(dest_buffer);
+     /*write bloom filters/file metadata*/
+    /*then write our dictionary data if applicable*/
+    dbio_write(curr_file, curr_sst->block_start, dest_buffer->curr_bytes);
+    dbio_fsync(curr_file);
+    dbio_close(curr_file);
 
     gettimeofday(&curr_sst->time, NULL);
     insert(job->new_sst_files, curr_sst);
@@ -231,7 +227,7 @@ int merge_tables(byte_buffer *dest_buffer, byte_buffer * compression_buffer, com
     curr_sst->block_start = GLOB_OPTS.SST_TABLE_SIZE;
 
     db_FILE * curr_file = dbio_open(curr_sst->file_name, 'w');
-    if (curr_file == NULL) return FAILED_OPEN;
+    set_context_buffer(curr_file, dest_buffer);
     
     block_index * current_block = pad_allocate(sizeof(block_index));
     *current_block = init_block(curr_sst->mem_store, &sst_offset_tracker);
@@ -251,7 +247,9 @@ int merge_tables(byte_buffer *dest_buffer, byte_buffer * compression_buffer, com
             enqueue(pq, &next_entry);
         }
         merge_data best_entry = discard_same_keys(pq, its, c, current);
-        
+        if (entry_len(best_entry) > 4096){
+            printf("here\n");
+        }
         if (block_b_count + entry_len(best_entry) >= GLOB_OPTS.BLOCK_INDEX_SIZE){
             complete_block(curr_sst, current_block, block_b_count);
             reset_block_counters(&block_b_count, &sst_b_count);
@@ -261,7 +259,7 @@ int merge_tables(byte_buffer *dest_buffer, byte_buffer * compression_buffer, com
         }
         if (sst_offset_tracker + entry_len(best_entry) >= GLOB_OPTS.SST_TABLE_SIZE || (block_b_count == 0 && sst_offset_tracker == GLOB_OPTS.SST_TABLE_SIZE)){
             
-            complete_block(&curr_sst, current_block, block_b_count);
+            complete_block(curr_sst, current_block, block_b_count);
             reset_block_counters(&block_b_count, &sst_b_count);
             
             write_blocks_to_file(dest_buffer,compression_buffer,dict_buffer, curr_sst, entrys, curr_file);
@@ -285,6 +283,7 @@ int merge_tables(byte_buffer *dest_buffer, byte_buffer * compression_buffer, com
 
             generate_unique_sst_filename(curr_sst->file_name, MAX_F_N_SIZE, job->end_level);
             curr_file = dbio_open(curr_sst->file_name, 'w');
+            set_context_buffer(curr_file, dest_buffer);
             if (curr_file == NULL) return FAILED_OPEN;
             *current_block = init_block(curr_sst->mem_store, &sst_offset_tracker);
         }
@@ -352,7 +351,6 @@ int remove_same_sst(sst_f_inf * target, list * target_lvl, int level){
 }
 
 int remove_sst_from_list(sst_f_inf * target, list * target_lvl, int level){
-    pthread_mutex_lock(&target_lvl->write_lock);
     char * key_to_check = target->file_name;
     if (key_to_check == NULL) return -1;
     int ind;
@@ -371,7 +369,6 @@ int remove_sst_from_list(sst_f_inf * target, list * target_lvl, int level){
         return -1;
     } /*we compare the block index lists because that is a pointer. since we are dealing with structs, we cannot just compare the structs, as they may differ */
     if (!candiate->marked) remove(candiate->file_name);
-    fprintf(stdout, "removed %s\n", candiate->file_name);
     free_sst_inf(candiate);
     remove_at_unlocked(target_lvl,  ind);
   

@@ -108,7 +108,7 @@ static inline void set_debug_defaults(option * opt){
     opt->WAL_SIZE = opt->MEM_TABLE_SIZE;
     opt->NUM_FILES_COMPACT_ZER0 = 2;
     opt->dict_size_ratio = 100;
-    opt->compress_level =1;
+    opt->compress_level =-10;
     opt->num_cache = 8;
     opt->num_memtable =7;
     opt->num_to_flush = 1;

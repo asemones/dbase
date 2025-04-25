@@ -25,7 +25,7 @@ int setup_io_uring(struct io_uring *ring, int queue_depth) {
 }
 int init_struct_pool_kernel(struct_pool * pool, arena * a,int bufsize, int bufnum){
       for (int i = 0; i< bufnum; i++){
-        byte_buffer  * buffer = malloc(sizeof(byte_buffer));
+        byte_buffer  * buffer = calloc(sizeof(byte_buffer), 1);
 
         buffer->max_bytes = bufsize;
         buffer->curr_bytes = 0;

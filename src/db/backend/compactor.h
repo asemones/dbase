@@ -204,16 +204,6 @@ void complete_block(sst_f_inf * curr_sst, block_index * current_block, int block
 void reset_block_counters(int *block_b_count, int *sst_b_count);
 
 /**
- * @brief Processes an SST file during compaction.
- * @param dest_buffer Destination buffer.
- * @param curr_sst Current SST file.
- * @param curr_file File to write to.
- * @param job Compaction job.
- * @param sst_b_count SST byte count.
- * @param cm Compaction manager.
- */
- void process_sst(byte_buffer *dest_buffer, sst_f_inf *curr_sst, FILE *curr_file, compact_job_internal*job, int sst_b_count);
-/**
  * @brief Initializes a new block.
  * @param mem_store Memory arena for allocation.
  * @param off_track Pointer to track offset.

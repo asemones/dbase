@@ -1,4 +1,5 @@
 #include "key-value.h"
+#include <sys/types.h> // Include for u_int16_t
 #define ERR -1000
 #define INT 0
 #define FLOAT 1 
@@ -20,13 +21,25 @@ size_t load_block_into_into_ds(byte_buffer *stream, void *ds, void (*func)(void 
     read_buffer(stream, &num_entries, sizeof(u_int16_t));  
     for (int i = 0; i < num_entries; i++) {
         read_buffer(stream, &key.len, sizeof(u_int16_t));
+
+        // Check if key length is valid given remaining buffer size
+        if (stream->read_pointer + key.len > stream->max_bytes) {
+             fprintf(stderr, "Error: Invalid key length (%u) exceeds buffer bounds in block parsing.\n", key.len);
+             return num_bytes; // Return bytes successfully processed so far
+        }
         key.entry = &stream->buffy[stream->read_pointer];
         stream->read_pointer += key.len;
-        read_buffer(stream, &value.len, sizeof(u_int16_t));  
+
+        read_buffer(stream, &value.len, sizeof(u_int16_t));
+        if (stream->read_pointer + value.len > stream->max_bytes) {
+             fprintf(stderr, "Error: Invalid value length (%u) exceeds buffer bounds in block parsing.\n", value.len);
+             return num_bytes;
+        }
         value.entry = &stream->buffy[stream->read_pointer];
         stream->read_pointer += value.len;
-        (*func)(ds, &key, &value);  
-        num_bytes += sizeof(u_int16_t) * 2 + key.len + value.len;
+
+        (*func)(ds, &key, &value);
+        num_bytes += sizeof(u_int16_t) * 2 + key.len + value.len; 
     }
 
     return num_bytes;

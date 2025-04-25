@@ -137,13 +137,7 @@ void reset_skip_list(SkipList* list){
 }
 void freeSkipList(SkipList* list) {
     if (list == NULL || list->header == NULL) return;
-    Node* current = list->header->forward[0];
-    while (current != NULL) {
-        Node* next = current->forward[0];
-        free(current);
-        current = next;
-    }
-    free(list->header);
+    free_arena(list->arena);
     free(list);
 }
 int compareInt(const void* a, const void* b) {

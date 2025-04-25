@@ -16,9 +16,11 @@
 db_shard shard; // Use db_shard instead of separate engine/cm/thrd
 
 void prep_test(){
-    // Create the shard, which includes the engine, compactor, and its runtime
     shard = db_shard_create();
-    // Compactor runs automatically within the shard's runtime, no need for separate thread pool
+    compactor_args * args = malloc(sizeof(*args));
+    args->cm = shard.manager;
+    args->rt = shard.rt;
+    cascade_submit_external(shard.rt, NULL, NULL, run_compactor, args);
 }
 void end_test(){
     sleep(10);

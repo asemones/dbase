@@ -19,6 +19,7 @@
 #include "WAL.h"
 #include "indexer.h"
 #include  "../../ds/cache_shrd_mnger.h"
+#include "../../util/multitask.h"
 #ifndef LSM_H
 #define LSM_H
 

@@ -114,6 +114,7 @@ merge_data next_key_block(sst_iter *sst,  shard_controller * c) {
         if (index == NULL) {
             return bad_return;
         }
+        unpin_page(sst->cursor.index->page);
         cache_entry ce = retrieve_entry_sharded(*c, index, sst->file->file_name, sst->file);
         if (ce.ar == NULL || ce.ar == NULL) {
             return bad_return;

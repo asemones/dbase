@@ -10,44 +10,36 @@ bool check_for_compact(list * level, int lvl){
     return level->len > GLOB_OPTS.NUM_FILES_COMPACT_ZER0;
 }
 /*safely marks and extracts an sst while holding the lock*/
-sst_f_inf sst_mark_and_grab(list * my_list, sst_f_inf * victim, int index){
-    sst_f_inf empty;
-    memcpy(empty.file_name, "empty", strlen("empty") + 1);
+sst_f_inf * sst_mark_and_grab(list * my_list, sst_f_inf * victim, int index){
     sst_f_inf * target = internal_at_unlocked(my_list, index);
     if (target == NULL){
-        return empty;
-    }
-    if (target->in_cm_job == true){
-         return empty;
+        return NULL;
     }
     if (victim == NULL){
-        sst_f_inf to_return = *target;
-        target->in_cm_job = true;
-        return to_return;
-    }
-    if (sst_equals(victim, target)){
-        return empty;
+        return target;
     }
     int score = calculate_overlap(victim->min,victim->max, target->min, target->max);
+    if (sst_equals(victim, target)){
+        return NULL;
+    }
     if (target->in_cm_job && score == 0){
-        memcpy(empty.file_name, "cancel", strlen("cancel") + 1);
-        return empty;
+        return target;
     }
     if (score != 0){
-        return empty;
+       return NULL;
     }
-    target->in_cm_job = true;
-    sst_f_inf to_return = *target;
-    return to_return;
+    return target;
 }   
 int find_compact_friend(list * next_level,list* list_to_merge,sst_f_inf * victim){
 
     if (next_level == NULL) return -1;
     for (size_t i = 0 ; i < next_level->len; i++){
         
-        sst_f_inf sst_ret = sst_mark_and_grab(next_level, victim, i);
-        if (strcmp(sst_ret.file_name, "cancel") == 0) return -1;
-        if (strcmp(sst_ret.file_name, "empty") !=0) insert(list_to_merge, &sst_ret);
+        sst_f_inf * sst_ret = sst_mark_and_grab(next_level, victim, i);
+        if (sst_ret== NULL) continue;
+        if (sst_ret != NULL && !sst_ret->in_cm_job) insert(list_to_merge, sst_ret);
+        else if (sst_ret->in_cm_job) return -1;
+        sst_ret->in_cm_job = true;
     }
     return 0;
 }
@@ -84,22 +76,22 @@ int create_jobs(compact_manager * cm, int levels []){
         for(int j = 0; j < sst_fs->len; j++){
             int res= 0;
             if (i == 0 && cm->lvl0_job_running) break;
-            sst_f_inf ret = sst_mark_and_grab(sst_fs, NULL, j);
-            if (strcmp(ret.file_name, "empty") == 0) continue;
+            sst_f_inf * ret = sst_mark_and_grab(sst_fs, NULL, j);
+            if (ret == NULL) continue;
             job.id = compute_priority(i);
             job.start_level = i;
             job.to_merge = List(0, sizeof(sst_f_inf), false);
             job.new_sst_files = List(0, sizeof(sst_f_inf), false);
             job.end_level = i + 1;
             job.search_level = i + 1;
-            insert( job.to_merge,&ret);
+            insert( job.to_merge,ret);
             if (i == 0) {
-                res+=find_compact_friend(cm->sst_files[0],  job.to_merge,  &ret);
+                res+=find_compact_friend(cm->sst_files[0],  job.to_merge,  ret);
             } 
             
-            res += find_compact_friend(cm->sst_files[job.search_level],  job.to_merge,  &ret);
+            res += find_compact_friend(cm->sst_files[job.search_level],  job.to_merge,  ret);
             if (res == -1){
-                int ind  = find_sst_file_eq_iter(cm->sst_files[job.start_level], sst_fs->len, ret.file_name);
+                int ind  = find_sst_file_eq_iter(cm->sst_files[job.start_level], sst_fs->len, ret->file_name);
                 sst_f_inf * reset_targ = internal_at_unlocked(cm->sst_files[job.start_level], ind);
                 reset_targ->in_cm_job = false;
                 for (int l = 1; l < job.to_merge->len; l++){
@@ -132,23 +124,22 @@ int create_jobs(compact_manager * cm, int levels []){
     return 0;
 }
 int start_jobs(struct_pool * pool, compact_manager* cm, uint16_t num){
+    uint32_t made = 0;
     for (int i = 0; i < num; i++){
         compact_job_internal job;
         int res = dequeue(cm->job_queue, &job);
         if (res < 0) break;
+        made ++;
         compact_tble_info * info = request_struct(pool);
         info->cm = cm;
         info->job = job; 
         fprintf(stdout, "starting job: lvl %ld to lvl %ld with %d files\n", job.start_level, job.end_level, job.to_merge->len);
         cascade_sub_intern_nowait(merge_wrapper, info, NULL);
     }
-    return 0;
+    return made;
 }
 /*task func*/
-typedef struct compactor_args{
-    cascade_runtime_t * rt;
-    compact_manager * cm;
-}compactor_args;
+
 future_t run_compactor(compactor_args * args){
     compact_manager * cm = args->cm;
     const int max_concurrent_compactions = GLOB_OPTS.NUM_COMPACTOR_UNITS;
@@ -168,10 +159,16 @@ future_t run_compactor(compactor_args * args){
             continue;
         }
     
-        uint32_t max_to_add = max_concurrent_compactions - job_args->size;
+        uint32_t max_to_add = job_args->size;
         create_jobs(cm, levels);
-        start_jobs(job_args, cm, max_to_add);
-        intern_wait_for_x(1);
+        uint32_t made=  start_jobs(job_args, cm, max_to_add);
+        /*full*/
+        if (made == max_to_add){
+            intern_wait_for_x(1);
+        }
+        else{
+            yield_compute;
+        }
     }
 }
 

@@ -20,7 +20,10 @@ typedef struct compact_tble_info{
     compact_job_internal job;
     struct_pool * pool;
 }compact_tble_info;
-
+typedef struct compactor_args{
+    cascade_runtime_t * rt;
+    compact_manager * cm;
+}compactor_args;
 /**
  * @brief Checks if a level needs compaction
  * @param level Pointer to the list of SST files in the level
@@ -35,14 +38,6 @@ typedef struct compact_tble_info{
  */
 bool check_for_compact(list * level, int lvl);
 
-/**
- * @brief Marks an SST file for compaction and grabs it.
- * @param my_list Pointer to the list of SST files.
- * @param victim Pointer to the SST file to mark.
- * @param index Index of the SST file in the list.
- * @return The marked SST file information.
- */
-sst_f_inf sst_mark_and_grab(list * my_list, sst_f_inf * victim, int index);
 
 /**
  * @brief Finds a compatible SST file for compaction in the next level.

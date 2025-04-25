@@ -21,7 +21,8 @@ mem_table * create_table(){
     } 
     table->immutable = false;
     table->num_pair = 0;
-    table->skip = create_skiplist(&compareString);
+    const int est_max_nodes= GLOB_OPTS.MEM_TABLE_SIZE / 4;
+    table->skip = create_skiplist(est_max_nodes,&compareString);
     if (table->skip == NULL) {
         free_filter(table->filter);
         free(table);
@@ -41,8 +42,8 @@ void clear_table(mem_table * table){
 
     reset_skip_list(table->skip);
     reset_filter(table->filter);
-
-    table->skip = create_skiplist(&compareString);
+    const int est_max_nodes= GLOB_OPTS.MEM_TABLE_SIZE / 4;
+    table->skip = create_skiplist(est_max_nodes,&compareString);
     table->bytes = 0;
     table->num_pair = 0;
     table->immutable = false;
@@ -344,16 +345,7 @@ int flush_table(mem_table *table, storage_engine * engine){
 
     meta_data * meta = engine->meta;
     
-    sst_f_inf *sst ;
-    /*get a heap allocated sst*/
-    {
-        if (meta->sst_files[0]->len + 1 > meta->sst_files[0]->cap){
-            expand(meta->sst_files[0]);
-        } 
-        sst_f_inf * sst_l = meta->sst_files[0]->arr;
-        sst = &sst_l[meta->sst_files[0]->len];
-        meta->sst_files[0]->len++;
-    }
+    sst_f_inf *sst = pad_allocate(sizeof(*sst));
     *sst =  create_sst_filter(table->filter);
     byte_buffer * buffer = select_buffer(GLOB_OPTS.MEM_TABLE_SIZE);
     if (table->bytes <= 0) {
@@ -392,7 +384,7 @@ int flush_table(mem_table *table, storage_engine * engine){
 
     dbio_close(sst_f);
     return_buffer(buffer);
-
+    insert(meta->sst_files[0], sst);
     return 0;
 
 }

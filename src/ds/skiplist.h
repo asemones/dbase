@@ -52,15 +52,15 @@ int insert_list(SkipList* list, db_unit key, db_unit value);
  * @param key The key to store in the node
  * @param value The value associated with the key
  * @return Pointer to the newly created node
- */
-Node* create_skiplist_node(int level, db_unit key, db_unit value);
+ */\
+Node* create_skiplist_node(int level, db_unit key, db_unit value, arena * allocator);
 
 /**
  * @brief Creates a new skip list
  * @param compare Function pointer to the comparison function for keys
  * @return Pointer to the newly created skip list
  */
-SkipList* create_skiplist(int (*compare)(const void*, const void*));
+SkipList* create_skiplist(int max_nodes,int (*compare)(const void*, const void*));
 
 /**
  * @brief Generates a random level for a new node

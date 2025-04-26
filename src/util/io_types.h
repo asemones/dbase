@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <sys/types.h>
 #include <stdint.h>
+#include <float.h>
 #include <time.h> // Added for timespec
 #include <liburing.h>
 #include <sys/uio.h>
@@ -26,6 +27,15 @@ enum operation{
 
 typedef void (*aio_callback)(void *arg);
 
+typedef struct io_batch_tuner{
+    uint64_t full_flush_runs;
+    uint64_t non_full_runs;
+    double batch_timer_len_ns;
+    double full_ratio;
+    uint64_t last_recorded_ns;
+    uint64_t io_req_in_slice;
+} io_batch_tuner;
+
 struct io_manager{
     int m_tbl_s;
     int sst_tbl_s;
@@ -41,6 +51,7 @@ struct io_manager{
     struct iovec *iovecs;
     int pending_sqe_count;      
     struct timespec first_sqe_timestamp; 
+    io_batch_tuner tuner;
 };
 
 // Declaration for the thread-local io_manager pointer defined in io.c
@@ -65,5 +76,4 @@ typedef struct db_FILE {
     byte_buffer* buf;
     int response_code;
 } db_FILE;
-
 #endif // IO_TYPES_H

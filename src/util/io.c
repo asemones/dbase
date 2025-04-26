@@ -23,6 +23,14 @@ int setup_io_uring(struct io_uring *ring, int queue_depth) {
     }
     return 0;
 }
+void clear_tuner(io_batch_tuner * tuner){
+    tuner->full_flush_runs = 0;
+    tuner->non_full_runs = 0;
+    tuner->last_recorded_ns = get_ns();
+    tuner->batch_timer_len_ns = 1 * ONE_MILLION;
+    tuner->full_ratio = .5;
+    tuner->io_req_in_slice = 0;
+}
 int init_struct_pool_kernel(struct_pool * pool, arena * a,int bufsize, int bufnum){
       for (int i = 0; i< bufnum; i++){
         byte_buffer  * buffer = calloc(sizeof(byte_buffer), 1);
@@ -131,7 +139,7 @@ void init_io_manager(struct io_manager * manage, int num_4kb, int num_sst_tble, 
         insert_struct(manage->io_requests, re);
     }
     manage->pending_sqe_count = 0;
-
+    clear_tuner(&manage->tuner);
 }
 int allign_to_page_size(int curr_size) {
     if (curr_size % 4096 == 0) {
@@ -174,27 +182,78 @@ int add_read_write_requests(struct io_uring *ring, struct io_manager *manage, st
     }
     return 0;
 }
-#define IO_SUBMIT_TIMEOUT_MS 5
+
+static inline bool try_submit(struct io_uring *ring, io_batch_tuner *t, uint64_t pending){   
+    uint64_t ns = get_ns();
+    uint64_t elapsed = ns - t->last_recorded_ns;           
+    if (elapsed < t->batch_timer_len_ns){
+        return false;
+    }
+    if (pending < DEPTH){
+        t->non_full_runs++;
+    }
+    else{
+        t->full_flush_runs++;
+    }
+    int ret = io_uring_submit(ring);
+    if (ret >= 0) {
+        man->pending_sqe_count = 0;
+        t->last_recorded_ns = get_ns();                       
+    }
+    return ret >= 0;
+}
+bool try_submit_interface(struct io_uring *ring){
+    io_batch_tuner * tuner = &man->tuner;
+    uint64_t pending = man->pending_sqe_count;
+    if (try_submit(ring, tuner, pending)){
+        man->pending_sqe_count = 0;
+        return true;
+    }
+    return false;
+}
+void reset_tuner(io_batch_tuner * tuner){
+    tuner->full_flush_runs = 0;
+    tuner->non_full_runs = 0;
+    tuner->io_req_in_slice = 0;
+    tuner->last_recorded_ns = get_ns();
+}
+void perform_tuning(io_batch_tuner *t){
+    const double step = 0.10;      
+    const double target_full = 0.50;         
+    const double hysteresis= 0.05;
+    const double min_ns = 10e3;         
+    const double max_ns = 250e6;         
+
+    uint64_t total = t->full_flush_runs + t->non_full_runs;
+    if (!total)
+        return;
+
+    double full_ratio = (double)t->full_flush_runs / (double)total;
+
+    double elapsed_ms = t->batch_timer_len_ns / 1e6;                            
+
+    double io_per_ms = t->io_req_in_slice / elapsed_ms;
+
+
+    /* 1. trickle load → collapse deadline */
+    if (io_per_ms < 1.0) {
+        t->batch_timer_len_ns = (uint64_t)min_ns;
+    }
+    else if (full_ratio > target_full + hysteresis) {
+        double next = t->batch_timer_len_ns * (1.0 + step);
+        if (next > max_ns) next = max_ns;
+        t->batch_timer_len_ns = (uint64_t)next;
+    } else if (full_ratio < target_full - hysteresis) {
+        double next = t->batch_timer_len_ns * (1.0 - step);
+        if (next < min_ns) next = min_ns;
+        t->batch_timer_len_ns = (uint64_t)next;
+    }
+    //fprintf(stdout, "tuned ratio of %f with submits per ms of %f and new timeout %f next\n", full_ratio, io_per_ms, t->batch_timer_len_ns);
+    reset_tuner(t);
+}
 
 int process_completions(struct io_uring *ring) {
     if (!ring) return 0;
-
-    if (man->pending_sqe_count > 0) {
-        struct timespec now;
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        long elapsed_ms = (now.tv_sec - man->first_sqe_timestamp.tv_sec) * 1000 +
-                          (now.tv_nsec - man->first_sqe_timestamp.tv_nsec) / 1000000;
-
-        if (elapsed_ms >= IO_SUBMIT_TIMEOUT_MS) {
-            int res = io_uring_submit(ring);
-            if (res < 0) {
-                perror("Timed submit fail");
-            } else {
-                man->pending_sqe_count = 0;
-            }
-        }
-        return 0;
-    }
 
     struct io_uring_cqe *cqes[DEPTH * 2]; 
     int count = io_uring_peek_batch_cqe(ring, cqes, DEPTH * 2);
@@ -318,6 +377,7 @@ int do_write(struct db_FILE * req, off_t offset, size_t len, struct io_manager *
     req->op = WRITE;
     req->len = len;
     req->offset = offset;
+    manager->tuner.io_req_in_slice ++;
     add_read_write_requests(&manager->ring,manager, req, 0);
     task_t * task_w = aco_get_arg();
     if (task_w) {
@@ -330,6 +390,7 @@ int do_read(struct db_FILE * req, off_t offset, size_t len, struct io_manager * 
     req->len = len;
     req->op = READ;
     req->offset = offset;
+    manager->tuner.io_req_in_slice ++;
     add_read_write_requests(&manager->ring,manager, req, 0);
     task_t * task_r = aco_get_arg();
     if (task_r) {
@@ -343,6 +404,7 @@ int do_open(const char * fn, struct db_FILE * req, struct io_manager * manager){
     req->op = OPEN;
     req->desc.fn = (char*)fn;
     add_open_close_requests(&manager->ring,req, 0);
+    manager->tuner.io_req_in_slice ++;
     task_t * task_o = aco_get_arg();
     if (task_o) {
         task_o->stat = IO_WAIT;
@@ -354,6 +416,7 @@ int do_close(int fd, struct db_FILE * req, struct io_manager * manager){
     
     req->op = CLOSE;
     add_open_close_requests(&manager->ring,req, 0);
+    manager->tuner.io_req_in_slice ++;
     task_t * task_c = aco_get_arg();
     if (task_c) {
         task_c->stat = IO_WAIT;
@@ -363,6 +426,7 @@ int do_close(int fd, struct db_FILE * req, struct io_manager * manager){
 }
 int do_fsync(struct db_FILE * file, struct io_manager * manager){
     add_fsync_request(&manager->ring,file, 0);
+    manager->tuner.io_req_in_slice ++;
     task_t * task_f = aco_get_arg();
     if (task_f) {
         task_f->stat = IO_WAIT;

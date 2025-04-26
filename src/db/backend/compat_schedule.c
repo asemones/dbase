@@ -45,10 +45,11 @@ int find_compact_friend(list * next_level,list* list_to_merge,sst_f_inf * victim
 }
 future_t merge_wrapper(void * arg){
     compact_tble_info * inf = arg;
-    compact_one_table(inf->cm, inf->job, inf->job.target);
     int len =  inf->job.to_merge->len;
+    compact_one_table(inf->cm, inf->job, inf->job.target);
     fprintf(stdout, "finished job: lvl %ld to lvl %ld with %d files\n", inf->job.start_level, inf->job.end_level, len);
     insert_struct(inf->pool,  inf);
+    exit(0);
     cascade_return_none();
 
 }

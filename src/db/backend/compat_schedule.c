@@ -167,7 +167,7 @@ future_t run_compactor(compactor_args * args){
             intern_wait_for_x(1);
         }
         else{
-            yield_compute;
+            cascade_msleep(15);
         }
     }
 }

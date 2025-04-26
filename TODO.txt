@@ -84,3 +84,5 @@ determine how the compactor should operate:
 4. fuck off with the copying. 1x for moving into compression buffer, 1x for compression AT MOST
 5. remove all of the multithreading infra
 6. 
+
+optize time wheel

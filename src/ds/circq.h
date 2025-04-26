@@ -37,6 +37,23 @@ static inline NAME* NAME##_create(int capacity) { \
 } \
 \
  \
+ static inline void NAME##_init(NAME* queue, int capacity) { \
+    \
+    queue->capacity = capacity; \
+    queue->front = -1; \
+    queue->rear = -1; \
+    queue->size = 0; \
+    queue->array = (T*)malloc(capacity * sizeof(T)); \
+    \
+    if (!queue->array) { \
+        free(queue); \
+        return; \
+    } \
+    \
+    return; \
+} \
+\
+ \
 static inline bool NAME##_is_full(NAME* queue) { \
     return queue->size == queue->capacity; \
 } \

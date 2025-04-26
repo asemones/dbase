@@ -240,12 +240,6 @@ int calculate_overlap(char *min1, char *max1, char *min2, char *max2);
 int get_level_size(int level);
 
 /**
- * @brief Resets a compaction info structure.
- * @param ci Pointer to the compaction info to reset.
- */
-void reset_ci(void * ci);
-
-/**
  * @brief Removes an SST file from a level if it matches the target.
  * @param target Target SST file.
  * @param target_lvl List of SST files in the level.

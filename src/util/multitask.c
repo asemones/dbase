@@ -405,6 +405,7 @@ void check_return_val(rpc_table_t * tbl, task_t * task, db_schedule * scheduler)
             task->type = POOL_WAIT;
             // Atomically decrement the counter. Release semantics ensure that prior writes
             // within this task become visible to threads doing an acquire-load on the counter.
+            if (!task->wait_counter ) return;
             atomic_fetch_sub_explicit(task->wait_counter, 1, memory_order_release);  
             break;
         case SUBTASK_INTERN:
@@ -445,13 +446,20 @@ uint32_t check_queues(cascade_runtime_t *rt, uint32_t batch_size, uint32_t max_t
     return msgs_processed;
 }
 void freeze_scheduler(db_schedule* scheduler, int finish_tasks, struct io_uring  *ring);
+void on_tw_advance(task_t * groggy_task, sync_task_q * q){
+    groggy_task->stat = RUNNING;
+    sync_task_q_enqueue(q, groggy_task);
+}
 static inline void scheduler_logic(db_schedule * scheduler,  struct io_uring* ring){
         task_t* task;
         
         /*dont aquire a lock for no real reason*/
-        
+        tw_advance(scheduler->sleep, get_ns(), on_tw_advance, scheduler->active);
         if (sync_task_q_is_empty(scheduler->active)) { // Use sync version
-            process_completions(ring);
+            if (has_been_us(scheduler->complete_timer, 100, &scheduler->complete_timer)){
+                 process_completions(ring);
+            }
+            
             //check_queues(rt, 4, 40);
             return;
         }
@@ -474,10 +482,9 @@ static inline void scheduler_logic(db_schedule * scheduler,  struct io_uring* ri
         else if (aco_likely(task->real_task && task->stat != IO_WAIT)) {
             aco_resume(task->thread);
         }
-        if (task->stat == IO_WAIT) {
+        if (task->stat == IO_WAIT || task->stat == NAP_TIME)  {
             return;
         }
-        
         if (task->stat == DONE) {
             check_return_val(scheduler->table, task, scheduler);
             sync_task_q_enqueue(scheduler->pool, task); 
@@ -486,8 +493,10 @@ static inline void scheduler_logic(db_schedule * scheduler,  struct io_uring* ri
         } 
         else {
             sync_task_q_enqueue(scheduler->active, task); 
-        }    
-        process_completions(ring);
+        }
+        if (has_been_us(scheduler->complete_timer, 100, &scheduler->complete_timer)){
+            process_completions(ring);
+        }
         //check_queues(rt, 4, 40);
 }
 void cascade_schedule(cascade_runtime_t* rt, struct io_uring* ring) {
@@ -521,6 +530,11 @@ void init_scheduler(db_schedule* scheduler, aco_t* main_co, int pool_size, int s
     atomic_store_explicit(&scheduler->ongoing_tasks, 0, memory_order_relaxed);
     scheduler->table = calloc(sizeof(rpc_table_t),1 );
     rpc_table_init(scheduler->table,  scheduler->id, pool_size);
+    scheduler->sleep = malloc(sizeof(timer_wheel_t));
+    const int tick_size = 1000 * 100 /*100 us*/;
+    calibrate_tsc();
+    tw_init(scheduler->sleep, tick_size, pool_size/2);
+    scheduler->complete_timer = 0;
 }
 io_config create_io_config (){
     io_config config;
@@ -703,4 +717,25 @@ future_t get_return_val_rt(cascade_runtime_t * rt, uint64_t id){
     future_t fut;
     rpc_get_result(rt->scheduler.table, id, &fut);
     return fut;
+}
+static inline void sleep_logic(uint64_t microseconds){
+    {
+          task_t * task = aco_get_arg();
+          task->stat = NAP_TIME;
+          sleep_entry_t entry;
+          entry.wake_me = microseconds;
+          entry.napper = task;
+          tw_add(task->scheduler->scheduler.sleep, microseconds * 1000, task);
+    }
+    aco_yield();
+
+}
+void cascade_sleep(uint64_t seconds){
+    sleep_logic(seconds * ONE_MILLION);
+}
+void cascade_msleep(uint64_t ms){
+    sleep_logic(ms * 1000);
+}
+void cascade_usleep(uint64_t useconds){
+    sleep_logic(useconds);
 }

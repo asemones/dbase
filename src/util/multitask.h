@@ -14,6 +14,8 @@
 #include "../ds/sync_queue.h"
 #include "../ds/rpc_table.h"
 #include "../ds/bitmap.h"
+#include "../ds/sleepwheel.h"
+#include "maths.h"
 #define MAX_RUNTIMES_DEFAULT 512
 #define MAX_SUBTASKS 128
 #define SEED_ID 0
@@ -63,7 +65,8 @@ enum task_status {
     IO_WAIT, /*task is waiting for an IO request and should not be polled*/
     COMPUTE_YIELD, /*task yielded to reduce starvation, safe to re pool in a round robin system*/
     RPC_YIELD, /*task is waiting for an RPC result*/
-    BLOCKED_YIELD, /*task is blocked waiting for a resource (e.g., task pool slot)*/
+    BLOCKED_YIELD,
+    NAP_TIME, /*task is blocked waiting for a resource (e.g., task pool slot)*/
     DONE /*finished, recycle task*/
 };
 enum message_type{
@@ -126,6 +129,9 @@ typedef struct db_schedule {
     arena * a;
     uint32_t id;
     aco_t* main_co;
+    uint64_t complete_timer;
+    timer_wheel_t * sleep;
+
 } db_schedule;
 typedef struct cascade_runtime_t{
     pthread_t thread;
@@ -209,4 +215,7 @@ void end_runtime(cascade_runtime_t * rt);
 void * pad_allocate(uint64_t size);
 future_t get_return_val(uint64_t id);
 void intern_wait_for_x(uint32_t num);
+void cascade_sleep(uint64_t seconds);
+void cascade_msleep(uint64_t ms);
+void cascade_usleep(uint64_t useconds);
 #endif 

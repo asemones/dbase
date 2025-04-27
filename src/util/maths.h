@@ -13,7 +13,8 @@
 #define NS_TO_US 1000;
 #define US_TO_MS 1000;
 #define NS_TO_S ONE_BILLION
-static uint64_t tsc_hz;     
+extern uint64_t tsc_hz;     
+
 static inline uint64_t getticks(void){
     uint64_t lo, hi;
 
@@ -40,11 +41,19 @@ static inline uint64_t round_up_pow2(uint64_t x) {
     return x + 1;                   
 }
 static inline uint64_t tsc_to_ns(uint64_t tsc){
-    return (tsc * tsc_hz) >> 32; 
+     return (uint64_t) (((__uint128_t)tsc* tsc_hz) >> 32);
 }
 static inline uint64_t get_ns(void){
+    #if defined(__x86_64__)
     uint64_t cycles = getticks();
     return tsc_to_ns(cycles);
+    #endif
+
+    #ifndef __x86_64__
+    struct timespec ts1;
+    clock_gettime(CLOCK_MONOTONIC, &ts1);
+    return ts1.tv_nsec + ts1.tv_sec * NS_TO_S
+    #endif
 }
 int has_been_us(uint64_t start_ns, uint64_t delta, uint64_t * out_curr_time);
 int has_been_ms(uint64_t start_ns, uint64_t delta, uint64_t * out_curr_time);

@@ -455,11 +455,12 @@ static inline void scheduler_logic(db_schedule * scheduler,  struct io_uring* ri
         
         /*dont aquire a lock for no real reason*/
         tw_advance(scheduler->sleep, get_ns(), on_tw_advance, scheduler->active);
-        if (sync_task_q_is_empty(scheduler->active)) { // Use sync version
+        if (sync_task_q_is_empty(scheduler->active)) { // Use sync version;
             if (has_been_us(scheduler->complete_timer, 100, &scheduler->complete_timer)){
+                 try_submit_interface(ring);
                  process_completions(ring);
+                 perform_tuning(&man->tuner);
             }
-            
             //check_queues(rt, 4, 40);
             return;
         }
@@ -495,8 +496,10 @@ static inline void scheduler_logic(db_schedule * scheduler,  struct io_uring* ri
             sync_task_q_enqueue(scheduler->active, task); 
         }
         if (has_been_us(scheduler->complete_timer, 100, &scheduler->complete_timer)){
+            perform_tuning(&man->tuner);
             process_completions(ring);
         }
+        try_submit_interface(ring);
         //check_queues(rt, 4, 40);
 }
 void cascade_schedule(cascade_runtime_t* rt, struct io_uring* ring) {
@@ -531,9 +534,8 @@ void init_scheduler(db_schedule* scheduler, aco_t* main_co, int pool_size, int s
     scheduler->table = calloc(sizeof(rpc_table_t),1 );
     rpc_table_init(scheduler->table,  scheduler->id, pool_size);
     scheduler->sleep = malloc(sizeof(timer_wheel_t));
-    const int tick_size = 1000 * 100 /*100 us*/;
     calibrate_tsc();
-    tw_init(scheduler->sleep, tick_size, pool_size/2);
+    tw_init(scheduler->sleep);
     scheduler->complete_timer = 0;
 }
 io_config create_io_config (){

@@ -85,4 +85,4 @@ determine how the compactor should operate:
 5. remove all of the multithreading infra
 6. 
 
-optize time wheel
+work on memtable and cache pinning/unpinning

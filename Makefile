@@ -1,5 +1,5 @@
 CC      := clang
-CFLAGS  := -Wall -g -pg -m64 -O3 -I./src -gdwarf-4 -mavx 
+CFLAGS  := -Wall -g -pg -m64 -I./src -gdwarf-4 -mavx 
 LDFLAGS := -debug -pthread -luuid -lzstd -luring 
 
 OBJDIR := build

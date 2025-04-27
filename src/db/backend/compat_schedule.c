@@ -45,8 +45,8 @@ int find_compact_friend(list * next_level,list* list_to_merge,sst_f_inf * victim
 }
 future_t merge_wrapper(void * arg){
     compact_tble_info * inf = arg;
-    compact_one_table(inf->cm, inf->job, inf->job.target);
     int len =  inf->job.to_merge->len;
+    compact_one_table(inf->cm, inf->job, inf->job.target);
     fprintf(stdout, "finished job: lvl %ld to lvl %ld with %d files\n", inf->job.start_level, inf->job.end_level, len);
     insert_struct(inf->pool,  inf);
     cascade_return_none();
@@ -155,7 +155,7 @@ future_t run_compactor(compactor_args * args){
             break;
         }
         if (!check_compacts(cm,levels)) {
-            yield_compute;
+            cascade_msleep(100);
             continue;
         }
     
@@ -163,13 +163,14 @@ future_t run_compactor(compactor_args * args){
         create_jobs(cm, levels);
         uint32_t made=  start_jobs(job_args, cm, max_to_add);
         /*full*/
-        if (made == max_to_add){
+        if (made == max_to_add && made != 0){
             intern_wait_for_x(1);
         }
         else{
-            cascade_msleep(15);
+            cascade_msleep(100);
         }
     }
+    cascade_return_none();
 }
 
 

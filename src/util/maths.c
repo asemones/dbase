@@ -1,4 +1,5 @@
 #include "maths.h"
+uint64_t tsc_hz = 0;  
 void calibrate_tsc(void){
     struct timespec ts1, ts2;
     uint64_t c1, c2;
@@ -14,11 +15,12 @@ void calibrate_tsc(void){
 
     uint64_t ns   = (ts2.tv_sec - ts1.tv_sec) * 1000000000ULL + (ts2.tv_nsec - ts1.tv_nsec);
     tsc_hz = (c2 - c1) * 1000000000ULL / ns; 
+    
 }
 int has_been_us(uint64_t start_ns, uint64_t delta,  uint64_t * out_curr_time){
     uint64_t curr_ns = get_ns();
     uint64_t delta_ns  = delta * NS_TO_US;
-    if ( curr_ns - start_ns > delta){
+    if ( curr_ns - start_ns > delta_ns){
         *out_curr_time = curr_ns;
         return true;
     }
@@ -27,7 +29,7 @@ int has_been_us(uint64_t start_ns, uint64_t delta,  uint64_t * out_curr_time){
 int has_been_ms(uint64_t start_ns, uint64_t delta, uint64_t * out_curr_time){
     uint64_t curr_ns = get_ns();
     uint64_t delta_ns  = delta *ONE_MILLION;
-    if ( curr_ns - start_ns > delta){
+    if ( curr_ns - start_ns > delta_ns){
         *out_curr_time = curr_ns;
         return true;
     }
@@ -36,7 +38,7 @@ int has_been_ms(uint64_t start_ns, uint64_t delta, uint64_t * out_curr_time){
 int has_been_s(uint64_t start_ns, uint64_t delta,  uint64_t * out_curr_time){
     uint64_t curr_ns = get_ns();
     uint64_t delta_ns  = delta * ONE_BILLION;
-    if ( curr_ns - start_ns > delta){
+    if ( curr_ns - start_ns > delta_ns){
         *out_curr_time = curr_ns;
         return true;
     }   

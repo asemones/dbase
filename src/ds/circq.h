@@ -115,6 +115,17 @@ static inline bool NAME##_peek(NAME* queue, T* item) { \
 } \
 \
  \
+ static inline bool NAME##_peek_slot_x(NAME* queue, T* item, int slot) { \
+    if (NAME##_is_empty(queue)) { \
+        return false; \
+    } \
+    \
+    int slot_num = (queue->front + slot ) % queue->capacity;\
+    *item = queue->array[slot_num]; \
+    return true; \
+} \
+\
+ \
 static inline void NAME##_destroy(NAME* queue) { \
     if (queue) { \
         if (queue->array) { \

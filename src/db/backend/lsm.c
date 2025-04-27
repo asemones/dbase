@@ -31,9 +31,27 @@ mem_table * create_table(){
     for(int i = 0 ; i < 2; i++){
         table->range[i] = NULL;
     }
+    table->ref_count = 0;
     return table;
 }
-
+void free_db_resource(db_resource * resource){
+    if (resource->src == INVALID) return;
+    if (resource->src == CACHE){
+       unpin_page(resource->resource);
+       resource->resource = NULL;
+       resource->value.entry = NULL;
+       resource->value.len= 0;
+    }
+    else if (resource->src == MEMTABLE){
+        mem_table * homeless = resource->resource;
+        homeless->ref_count  --;
+        if (homeless->ref_count < 0){
+            clear_table(homeless);
+            memtable_queue_t * q = homeless->util;
+            memtable_queue_t_enqueue(q, homeless);
+        }
+    }
+}
 int restore_state(storage_engine * e ,int lost_tables){
     WAL* w = e->w;
 }
@@ -50,24 +68,26 @@ void clear_table(mem_table * table){
     for(int i = 0 ; i < 2; i++){
         table->range[i] = NULL;
     }
+     table->ref_count = 0;
 }
 storage_engine * create_engine(char * file, char * bloom_file){
     init_crc32_table();
     storage_engine * engine = (storage_engine*)wrapper_alloc((sizeof(storage_engine)), NULL,NULL);
-    // Assume engine allocation succeeded before this function call
+
     set_debug_defaults(&GLOB_OPTS);
 
-    // Initialize queues (assuming success)
     engine->ready_queue = memtable_queue_t_create(GLOB_OPTS.num_memtable);
     engine->flush_queue = memtable_queue_t_create(GLOB_OPTS.num_memtable);
 
-    // Initialize active table (assuming success)
-    engine->active_table = create_table();
-    engine->num_table = GLOB_OPTS.num_memtable; // Total number of tables
 
-    // Create spare tables and add them to the ready queue (assuming success)
+    engine->active_table = create_table();
+    engine->active_table->util = engine->ready_queue;
+    engine->num_table = GLOB_OPTS.num_memtable;
+
+    
     for (int i = 1; i < GLOB_OPTS.num_memtable; i++) { // Start from 1 as active_table is the first
         mem_table* spare_table = create_table();
+        spare_table->util = engine->ready_queue;
         memtable_queue_t_enqueue(engine->ready_queue, spare_table);
     }
     engine->meta = load_meta_data(file, bloom_file);
@@ -86,6 +106,7 @@ storage_engine * create_engine(char * file, char * bloom_file){
     if (engine->meta->shutdown_status !=0){
         restore_state(engine,1); /*change 1 to a variable when implementing error system. also remeber
         the stray skipbufs inside this function skipbuf*/
+        // wtf is a skipbuf
     }
     engine->error_code = OK;
     engine->cm_ref = NULL;
@@ -193,7 +214,7 @@ size_t find_block(sst_f_inf *sst, const char *key) {
 }
 /* this is our read path. This read path */
 
-char * disk_read(storage_engine * engine, const char * keyword){ 
+db_resource disk_read(storage_engine * engine, const char * keyword){ 
     
     for (int i= 0; i < MAX_LEVELS; i++){
         if (engine->meta->sst_files[i] == NULL || engine->meta->sst_files[i]->len ==0) continue;
@@ -212,15 +233,25 @@ char * disk_read(storage_engine * engine, const char * keyword){
         
         cache_entry c = retrieve_entry_sharded(engine->cach, index, sst->file_name, sst);
         if (c.buf== NULL ){
-            engine->error_code = INVALID_DATA;
-            return NULL;
+             engine->error_code = INVALID_DATA;
+             db_resource src;
+             src.resource = NULL;
+             src.value.entry = NULL;
+             return src;
         }
         int k_v_array_index = json_b_search(c.ar, keyword);
         if (k_v_array_index== -1) continue;
 
-        return  c.ar->values[k_v_array_index].entry;    
+        db_resource src;
+        src.resource = index->page;
+        src.value= c.ar->values[k_v_array_index]; 
+        src.src = CACHE;
+        return src;   
     }
-    return NULL;
+    db_resource src;
+    src.resource = NULL;
+    src.value.entry = NULL;
+    return src;
 }
 char * disk_read_snap(snapshot * snap, const char * keyword){ 
     
@@ -250,58 +281,77 @@ char * disk_read_snap(snapshot * snap, const char * keyword){
     }
     return NULL;
 }
-char* read_record(storage_engine * engine, const char * keyword){
+int check_memtables(storage_engine * engine, const char * keyword, db_resource * resource){
+    
+    for (int i =engine->flush_queue->size -1 ; i >= 0; i--){
+        mem_table * tbl;
+        memtable_queue_t_peek_slot_x(engine->flush_queue, &tbl, i);
+        Node * node = search_list(tbl->skip, keyword);
+        if (!node) continue;
+        if (strcmp(node->value.entry, TOMB_STONE) == 0) return -1;
+        resource->value= node->value;
+        resource->resource = tbl;
+        resource->src = MEMTABLE;
+        return true;
+    }
+    return false;
+
+}
+static inline db_resource read_logic(storage_engine * engine, const char * keyword){
     // 1. Check the active table
     mem_table * active_table = engine->active_table;
     Node * entry = search_list(active_table->skip, keyword);
+    db_resource src;
     if (entry != NULL) {
         // Found in active table
         // Handle tombstone check if necessary (assuming TOMB_STONE means deleted)
         if (strcmp(entry->value.entry, TOMB_STONE) == 0) {
-             return NULL; // Treat tombstone as not found
+            src.value.entry = NULL;
+            src.src = INVALID;
+            return src;
         }
-        return entry->value.entry;
+        src.value = entry->value;
+        src.resource = active_table;
+        src.src = MEMTABLE;
+        return src;
     }
-
-    // 2. Check immutable tables waiting in the flush queue (newest first)
-    // Create a temporary snapshot of the flush queue pointers
-    int flush_queue_size = engine->flush_queue->size;
-    if (flush_queue_size > 0) {
-        mem_table* temp_tables[flush_queue_size];
-        int count = 0;
-        mem_table* temp_table;
-
-        // Dequeue all into temp array
-        while(memtable_queue_t_dequeue(engine->flush_queue, &temp_table)) {
-            temp_tables[count++] = temp_table;
-        }
-
-        // Search temp array (reverse order - newest immutable first) and re-enqueue
-        for (int i = count - 1; i >= 0; i--) {
-            mem_table* table_to_check = temp_tables[i];
-            entry = search_list(table_to_check->skip, keyword);
-             // Re-enqueue the table immediately after checking (or before?) - let's do it after search loop
-            if (entry != NULL) {
-                 // Re-enqueue all tables before returning
-                 for(int j=0; j<count; ++j){
-                     memtable_queue_t_enqueue(engine->flush_queue, temp_tables[j]);
-                 }
-                 // Found in an immutable table
-                 if (strcmp(entry->value.entry, TOMB_STONE) == 0) {
-                     return NULL; // Treat tombstone as not found
-                 }
-                 return entry->value.entry;
-            }
-        }
-         // Re-enqueue all tables if not found during search
-         for(int j=0; j<count; ++j){
-             memtable_queue_t_enqueue(engine->flush_queue, temp_tables[j]);
-         }
+    int res=  check_memtables(engine, keyword,&src);
+    if (res == -1 ){
+        src.value.entry = NULL;
+        return src;
     }
+    else if (res){
 
+        return src;
+    }   
+    src= disk_read(engine, keyword);
+    return src;
+}
+/*naive read*/
+char* read_record(storage_engine * engine, const char * keyword){
+    db_resource record = read_logic(engine, keyword);
+    return record.value.entry;
+}
+/*copy into a usr supplied out*/
+int memcpy_read(storage_engine * engine, const char * keyword, db_unit * out){
+    db_resource record = read_logic(engine, keyword);
+    if (record.value.entry == NULL || record.src == INVALID){
+        return -1;
+    }
+    out->len = record.value.len;
+    memcpy(out->entry, record.value.entry, out->len);
+    free_db_resource(&record);
+    return 0;
 
-    // 3. If not found in memory, check disk
-    return disk_read(engine, keyword);
+}
+/*raw slice*/
+db_resource read_and_pin(storage_engine * engine, const char * keyword){
+    db_resource src = read_logic(engine, keyword);
+    if (src.src == MEMTABLE){
+        mem_table * tbl = src.resource;
+        tbl->ref_count ++;
+    }
+    return src;
 }
 // Reads directly from the snapshot's disk view, does not check live memtables.
 char* read_record_snap(storage_engine * engine, const char * keyword, snapshot * s){
@@ -355,8 +405,15 @@ int flush_all_tables(storage_engine * engine){
              if (table_to_flush->bytes > 0) {
                  flush_table(table_to_flush, engine);
              }
-             clear_table(table_to_flush);
-             memtable_queue_t_enqueue(engine->ready_queue, table_to_flush);
+             if (table_to_flush->ref_count <= 0){
+                 clear_table(table_to_flush);
+                 memtable_queue_t_enqueue(engine->ready_queue, table_to_flush);
+             }
+             //ELSE: WE CAN DROP YOU FROM THE QUEUE. HERES WHY:
+             //A PINNED MEMTABLE IS ALREADY WRITTEN TO DISK, SO NON PINNED OWNERS DONT CARE
+             //THE OWNERS HAVE ACCESS TO THIS RESOURCE AND CAN PREFORM RESOURCE FREES ON IT
+
+
         }
         table_to_flush = NULL;
     }

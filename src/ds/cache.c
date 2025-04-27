@@ -85,7 +85,7 @@ cache_entry retrieve_entry_no_prefetch(cache *c, block_index *index, const char 
     size_t relative_index = index->offset - read_loc->offset;
     /*len becomes aligned*/
     pin_page(&c->frames[idx]);
-
+    /*save our frame*/
     byte_buffer *buffer = request_struct(man->four_kb);
     set_context_buffer(sst_file, buffer);
 
@@ -132,14 +132,13 @@ cache_entry retrieve_entry_no_prefetch(cache *c, block_index *index, const char 
 void pin_page(cache_entry *c) {
     __sync_fetch_and_add(&c->ref_count, 1);
 }
-
 void unpin_page(cache_entry *c) {
     __sync_fetch_and_sub(&c->ref_count, 1);
     if (c->ref_count <= 0 && c->loc == NULL ){
         return_struct(man->four_kb, c->buf, &reset_buffer);
         c = NULL; // Assuming 'buffer' is the pointer corresponding to 'c->idx' and no reset needed
     }
-    else if (c->ref_count <=0){
+    else if (c->ref_count <= 0){
         return_struct(c->loc, c->buf, &reset_buffer);
         c->loc = NULL;
         c = NULL;

@@ -62,8 +62,21 @@ typedef struct mem_table{
     bool immutable;
     char *range[2];
     SkipList *skip;
+    uint16_t ref_count;
+    void * util;
 }mem_table;
-
+enum src{
+        INVALID,
+        MEMTABLE,
+        CACHE,
+        DB_ALLOCATOR,
+        USR
+};
+typedef struct db_resource{
+    enum src src;
+    void * resource;
+    db_unit value;
+} db_resource;
 // Forward declare storage_engine for the macro
 typedef struct storage_engine storage_engine;
 
@@ -88,7 +101,7 @@ DEFINE_CIRCULAR_QUEUE(mem_table*, memtable_queue_t)
 struct storage_engine{
     mem_table * active_table;        // The table currently accepting writes
     memtable_queue_t * ready_queue;  // Queue of cleared tables ready for use
-    memtable_queue_t * flush_queue;  // Queue of immutable tables waiting to be flushed
+    memtable_queue_t * flush_queue;  
     meta_data * meta;
     size_t num_table;           // Total number of tables managed (active + queued)
     struct_pool * write_pool;
@@ -159,13 +172,6 @@ size_t find_sst_file(list * sst_files, size_t num_files, const char * key);
  */
 size_t find_block(sst_f_inf * sst, const char * key);
 
-/**
- * @brief Reads a value from disk based on a given key.
- * @param engine A pointer to the storage engine.
- * @param keyword The key to search for.
- * @return A pointer to the value read from disk, or NULL if not found.
- */
-char * disk_read(storage_engine * engine, const char * keyword);
 
 /**
  * @brief Reads a value from disk based on a given key and snapshot.

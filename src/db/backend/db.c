@@ -54,6 +54,7 @@ future_t db_task_write_record(void *arg) {
     // Package the result into a future_t
     cascade_return_int(result);
 }
+
 future_t db_task_read_record(void * arg){
     db_read_args * args = arg;
     char * result = read_record(args->shard->lsm, args->key.entry);
@@ -66,8 +67,6 @@ future_t kill_db(void * arg){
     free_engine(lsm, GLOB_OPTS.META_F_N, GLOB_OPTS.BLOOM_F_N);
     free_cm(shard->manager);
     cascade_return_none();
-
-
 }
 void db_end(db_shard * shard) {
     _Atomic uint64_t counter = 0;

@@ -15,6 +15,7 @@ void calibrate_tsc(void){
 
     uint64_t ns   = (ts2.tv_sec - ts1.tv_sec) * 1000000000ULL + (ts2.tv_nsec - ts1.tv_nsec);
     tsc_hz = (c2 - c1) * 1000000000ULL / ns; 
+    
 }
 int has_been_us(uint64_t start_ns, uint64_t delta,  uint64_t * out_curr_time){
     uint64_t curr_ns = get_ns();

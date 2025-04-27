@@ -56,7 +56,9 @@ bool get_bit(bit_array *ba, size_t index){
 void free_bit(bit_array *ba){
     if (ba == NULL) return;
     if (ba->array !=NULL) free(ba->array);
+    ba->array = NULL;
     free(ba);
+    ba = NULL;
 }
 bloom_filter* bloom(size_t num_hash, size_t num_word , bool read_files, char * file){
     bloom_filter * b =(bloom_filter *)wrapper_alloc((sizeof(*b)), NULL,NULL);

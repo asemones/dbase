@@ -61,6 +61,7 @@ future_t db_task_read_record(void * arg){
 }
 future_t kill_db(void * arg){
     db_shard * shard = arg;
+    shard->manager->exit =  true;
     storage_engine * lsm = shard->lsm;
     free_engine(lsm, GLOB_OPTS.META_F_N, GLOB_OPTS.BLOOM_F_N);
     free_cm(shard->manager);

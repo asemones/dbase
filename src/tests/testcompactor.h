@@ -23,10 +23,8 @@ void prep_test(){
     cascade_submit_external(shard.rt, NULL, NULL, run_compactor, args);
 }
 void end_test(){
-    sleep(10);
-    // db_end handles compactor shutdown and resource cleanup
-    remove_ssts(shard.lsm->meta->sst_files); // Get sst_files from the shard's metadata
-    sleep(10); // Keep sleep if needed for operations to settle before file removal
+    sleep(2);
+    remove_ssts(shard.lsm->meta->sst_files);
     db_end(&shard);
     remove(GLOB_OPTS.META_F_N);
     remove(GLOB_OPTS.BLOOM_F_N);

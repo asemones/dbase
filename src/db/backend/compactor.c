@@ -154,7 +154,8 @@ int write_blocks_to_file(byte_buffer *dest_buffer, byte_buffer * compression_buf
         handle_compression(curr_sst, compression_buffer,dest_buffer, dict_buffer);
         curr_sst->compressed_len = dest_buffer->curr_bytes;
         curr_sst->block_start = curr_sst->compressed_len; // Metadata starts after compressed data
-    } else {
+    } 
+    else {
         // If not compressing, dest_buffer already holds the final data and offsets are correct.
         curr_sst->compressed_len = 0;
         curr_sst->block_start = curr_sst->length; // Metadata starts after uncompressed data
@@ -324,7 +325,8 @@ int calculate_overlap(char *min1, char *max1, char *min2, char *max2) {
 }
 
 int get_level_size(int level){
-    return (GLOB_OPTS.LEVEL_0_SIZE * GLOB_OPTS.SST_TABLE_SIZE_SCALAR) * level;
+    uint32_t size=  (GLOB_OPTS.LEVEL_0_SIZE * GLOB_OPTS.SST_TABLE_SIZE_SCALAR) * level;
+    return size;
 }
 /*removes the sst when target is actually the same pointer*/
 int remove_same_sst(sst_f_inf * target, list * target_lvl, int level){

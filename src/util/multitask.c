@@ -461,7 +461,6 @@ static inline void scheduler_logic(db_schedule * scheduler,  struct io_uring* ri
                  process_completions(ring);
                  perform_tuning(&man->tuner);
             }
-            sched_yield();
             //check_queues(rt, 4, 40);
             return;
         }
@@ -535,9 +534,8 @@ void init_scheduler(db_schedule* scheduler, aco_t* main_co, int pool_size, int s
     scheduler->table = calloc(sizeof(rpc_table_t),1 );
     rpc_table_init(scheduler->table,  scheduler->id, pool_size);
     scheduler->sleep = malloc(sizeof(timer_wheel_t));
-    const int tick_size = 1000 * 100 /*100 us*/;
     calibrate_tsc();
-    tw_init(scheduler->sleep, tick_size, pool_size/2);
+    tw_init(scheduler->sleep);
     scheduler->complete_timer = 0;
 }
 io_config create_io_config (){

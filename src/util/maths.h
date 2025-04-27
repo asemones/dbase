@@ -14,6 +14,7 @@
 #define US_TO_MS 1000;
 #define NS_TO_S ONE_BILLION
 extern uint64_t tsc_hz;     
+
 static inline uint64_t getticks(void){
     uint64_t lo, hi;
 
@@ -40,7 +41,7 @@ static inline uint64_t round_up_pow2(uint64_t x) {
     return x + 1;                   
 }
 static inline uint64_t tsc_to_ns(uint64_t tsc){
-    return (tsc * tsc_hz) >> 32; 
+     return (uint64_t) (((__uint128_t)tsc* tsc_hz) >> 32);
 }
 static inline uint64_t get_ns(void){
     #if defined(__x86_64__)

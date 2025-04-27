@@ -41,7 +41,7 @@ void clear_table(mem_table * table){
   
 
     reset_skip_list(table->skip);
-    reset_filter(table->filter);
+    table->filter =  bloom(NUM_HASH,NUM_WORD,false, NULL);
     const int est_max_nodes= GLOB_OPTS.MEM_TABLE_SIZE / 4;
     table->skip = create_skiplist(est_max_nodes,&compareString);
     table->bytes = 0;
@@ -91,6 +91,38 @@ storage_engine * create_engine(char * file, char * bloom_file){
     engine->cm_ref = NULL;
     return engine;
 }
+/*NO TOUCHING*/
+int handle_annoying_ass_fucking_edge_case_fuck(storage_engine* engine ,db_unit key, db_unit value){
+    mem_table * table = NULL;
+    while(1){
+        table = engine->active_table;
+        table->immutable = true;
+        memtable_queue_t_enqueue(engine->flush_queue, table); 
+
+        mem_table* next_table = NULL;
+        while (!memtable_queue_t_dequeue(engine->ready_queue, &next_table)) {
+            aco_yield();
+        }
+        engine->active_table = next_table; 
+        table = engine->active_table;      
+
+        if (engine->flush_queue->size >= GLOB_OPTS.num_to_flush) {
+            flush_all_tables(engine);
+        }
+        table = engine->active_table;
+        if (table->immutable){
+            continue;
+        }
+        if (table->bytes + 4 + key.len + value.len < GLOB_OPTS.MEM_TABLE_SIZE){
+            break;
+        }
+    }
+    insert_list(table->skip, key, value);
+    table->num_pair++;
+    table->bytes += 4 + key.len + value.len;
+    map_bit(key.entry, table->filter);
+    return 0;
+}
 int write_record(storage_engine* engine ,db_unit key, db_unit value){
     if (key.entry== NULL || value.entry == NULL ) return -1;
     int success = write_WAL(engine->w, key, value);
@@ -99,24 +131,13 @@ int write_record(storage_engine* engine ,db_unit key, db_unit value){
         return FAILED_TRANSCATION;
     }
    
-    mem_table * table = engine->active_table;
-
+    mem_table * table = NULL;
+    while((table = engine->active_table)== NULL){
+        aco_yield();
+    }
     // Check if the active table needs to be rotated
     if (table->bytes + 4 + key.len + value.len >= GLOB_OPTS.MEM_TABLE_SIZE) {
-        table->immutable = true;
-        memtable_queue_t_enqueue(engine->flush_queue, table); // Add full table to flush queue
-
-        // Try to get a new table from the ready queue
-        mem_table* next_table = NULL;
-        while (!memtable_queue_t_dequeue(engine->ready_queue, &next_table)) {
-             aco_yield();
-        }
-        engine->active_table = next_table; 
-        table = engine->active_table;      
-        // Check if the flush queue has reached the threshold to trigger flushing
-        if (engine->flush_queue->size >= GLOB_OPTS.num_to_flush) {
-             flush_all_tables(engine);
-        }
+        return handle_annoying_ass_fucking_edge_case_fuck(engine, key, value);
     }
     insert_list(table->skip, key, value);
     table->num_pair++;
@@ -347,6 +368,7 @@ int flush_table(mem_table *table, storage_engine * engine){
     
     sst_f_inf *sst = pad_allocate(sizeof(*sst));
     *sst =  create_sst_filter(table->filter);
+    table->filter = NULL;
     byte_buffer * buffer = select_buffer(GLOB_OPTS.MEM_TABLE_SIZE);
     if (table->bytes <= 0) {
         printf("DEBUG: Table bytes <= 0, skipping flush\n");
@@ -394,6 +416,7 @@ void free_one_table(void* table){
     freeSkipList(m_table->skip);
     if (m_table->num_pair <= 0) free_filter(m_table->filter);
     else free(m_table->filter);
+    m_table->filter = NULL;
     table = NULL;
 }
 void dump_tables(storage_engine * engine){

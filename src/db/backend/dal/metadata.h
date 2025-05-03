@@ -11,6 +11,8 @@
 #include "../../../util/error.h"
 #include "../snapshot.h"
 #include <zdict.h>
+#include "../../../util/io.h"
+#include "../../../util/io_types.h"
 #ifndef METADATA_H
 #define METADATA_H
 #define MAX_LEVELS 7
@@ -45,6 +47,7 @@ typedef struct meta_data{
     snapshot * current_tx_copy;
     int shutdown_status;
     int err_code;
+    db_FILE * file;
 }meta_data;
 /**
  * @brief Reads a list of SST files from a buffer

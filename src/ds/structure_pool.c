@@ -84,11 +84,11 @@ void insert_struct(struct_pool * pool, void * data) {
 void * request_struct(struct_pool * pool) {
     if (!pool) return NULL;
 
-    lock(&pool->write_lock);
+
 
     if (pool->size == 0) {
         // Pool is empty
-        unlock(&pool->write_lock);
+       
         return NULL;
     }
 
@@ -98,20 +98,19 @@ void * request_struct(struct_pool * pool) {
     pool->head = (pool->head + 1) % pool->capacity;
     pool->size--;
 
-    unlock(&pool->write_lock);
+    
     return ptr;
 }
 
 void return_struct(struct_pool * pool, void * struct_ptr, void reset_func(void*)) {
     if (!pool || !struct_ptr) return;
 
-    lock(&pool->write_lock);
+
 
     // Check if the queue is already full (indicates an issue, like returning more items than capacity)
     if (pool->size >= pool->capacity) {
         fprintf(stderr, "Error: Attempted to return struct to a full pool queue. Pool size: %zu, Capacity: %zu\n", pool->size, pool->capacity);
-        // This might indicate a double-return or logic error elsewhere.
-        unlock(&pool->write_lock);
+        // This might indicate a double-return or logic error elsewhere
         return; // Or handle error differently
     }
 
@@ -125,7 +124,7 @@ void return_struct(struct_pool * pool, void * struct_ptr, void reset_func(void*)
     pool->tail = (pool->tail + 1) % pool->capacity;
     pool->size++;
 
-    unlock(&pool->write_lock);
+
 }
 
 struct_pool * free_pool(struct_pool * pool, void free_func(void*)) {

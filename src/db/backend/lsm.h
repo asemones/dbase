@@ -20,6 +20,7 @@
 #include "indexer.h"
 #include  "../../ds/cache_shrd_mnger.h"
 #include "../../util/multitask.h"
+#include "sst_manager.h"
 #ifndef LSM_H
 #define LSM_H
 
@@ -103,13 +104,13 @@ struct storage_engine{
     memtable_queue_t * ready_queue;  // Queue of cleared tables ready for use
     memtable_queue_t * flush_queue;  
     meta_data * meta;
+    sst_manager mana;
     size_t num_table;           // Total number of tables managed (active + queued)
     struct_pool * write_pool;
     shard_controller cach;
     WAL * w;
     bool * cm_ref;
     int error_code;
-    struct_pool *sst_info_pool; // Pool for temporary sst_f_inf structs used during flush
 };
 
 /**
@@ -154,25 +155,6 @@ storage_engine * create_engine(char * file, char * bloom_file);
  * @return An integer indicating success (0) or failure (non-zero).
  */
 int write_record(storage_engine * engine, db_unit key, db_unit value);
-
-/**
- * @brief Finds the SST file containing a given key.
- * @param sst_files A list of SST files.
- * @param num_files The number of SST files in the list.
- * @param key The key to search for.
- * @return The index of the SST file containing the key, or the index where it should be inserted.
- */
-size_t find_sst_file(list * sst_files, size_t num_files, const char * key);
-
-/**
- * @brief Finds the block containing a given key within an SST file.
- * @param sst A pointer to the SST file information.
- * @param key The key to search for.
- * @return The index of the block containing the key.
- */
-size_t find_block(sst_f_inf * sst, const char * key);
-
-
 /**
  * @brief Reads a value from disk based on a given key and snapshot.
  * @param snap A pointer to the snapshot.
@@ -234,7 +216,8 @@ void dump_tables(storage_engine * engine);
 void free_engine(storage_engine * engine, char * meta_file, char * bloom_file);
 
 int flush_all_tables(storage_engine * engine);
-
+db_resource read_and_pin(storage_engine * engine, const char * keyword);
+int memcpy_read(storage_engine * engine, const char * keyword, db_unit * out);
 #endif
 
 

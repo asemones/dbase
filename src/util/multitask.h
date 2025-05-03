@@ -66,6 +66,7 @@ enum task_status {
     COMPUTE_YIELD, /*task yielded to reduce starvation, safe to re pool in a round robin system*/
     RPC_YIELD, /*task is waiting for an RPC result*/
     BLOCKED_YIELD,
+    LOCK_YIELD,
     NAP_TIME, /*task is blocked waiting for a resource (e.g., task pool slot)*/
     DONE /*finished, recycle task*/
 };
@@ -183,8 +184,6 @@ typedef struct cascade_framework_t{
     int num_shards;
     partition_t * ranges;
 } cascade_framework_t;
-static int  l = sizeof(task_t);
-static int  p = sizeof(db_schedule);
 // Using the cascade_runtime_t definition from above
 /* Define circular queue after the struct task is fully defined */
  /*why do we do this? libaco aco requires heap allocated args sadly*/

@@ -53,6 +53,7 @@ typedef struct option{
     int num_cache;
     int num_memtable;
     int num_to_flush;
+    int index_cache_mem;
 }option;
 
 /**
@@ -86,6 +87,7 @@ static inline void set_defaults(option * opt){
     opt->num_cache = 128;
     opt->num_memtable =4;
     opt->num_to_flush = 1;
+    opt->index_cache_mem = 1024 * 1024 * 64;
 
 }
 static inline void set_debug_defaults(option * opt){
@@ -112,7 +114,7 @@ static inline void set_debug_defaults(option * opt){
     opt->num_cache = 8;
     opt->num_memtable =7;
     opt->num_to_flush = 1;
-
+    opt->index_cache_mem = 1024 * 1024;
 }
 
 

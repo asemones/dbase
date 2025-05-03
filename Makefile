@@ -15,6 +15,7 @@ SRCS += src/tests/unity/src/unity.c
 SRCS += src/util/io.c
 SRCS += src/util/aco.c
 SRCS += src/util/multitask.c 
+SRCS += src/util/multitask_primitives.c
 SRCS += src/util/maths.c 
 
 # Add assembly file

@@ -483,13 +483,12 @@ static inline void scheduler_logic(db_schedule * scheduler,  struct io_uring* ri
         else if (aco_likely(task->real_task && task->stat != IO_WAIT)) {
             aco_resume(task->thread);
         }
-        if (task->stat == IO_WAIT || task->stat == NAP_TIME)  {
+        if (task->stat == IO_WAIT || task->stat == NAP_TIME || task->stat ==LOCK_YIELD)  {
             return;
         }
         if (task->stat == DONE) {
             check_return_val(scheduler->table, task, scheduler);
             sync_task_q_enqueue(scheduler->pool, task); 
-        
             atomic_fetch_sub_explicit(&scheduler->ongoing_tasks, 1, memory_order_relaxed);
         } 
         else {

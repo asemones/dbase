@@ -210,3 +210,6 @@ void destroy_meta_data(char * file,char * bloom_file, meta_data * meta){
     free_md(meta);
     free_buffer(temp_buffer);
 }
+void update_md(){
+    
+}

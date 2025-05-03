@@ -43,6 +43,28 @@ static inline uint64_t round_up_pow2(uint64_t x) {
 static inline uint64_t tsc_to_ns(uint64_t tsc){
      return (uint64_t) (((__uint128_t)tsc* tsc_hz) >> 32);
 }
+static inline uint64_t xorshift32(void) {
+    static uint32_t state = 2463534242U;  
+    state ^= state << 13;
+    state ^= state >> 17;
+    state ^= state << 5;
+    return state;
+}
+static inline uint64_t  fast_coin(void) {
+    static uint64_t bits = 0;
+    static uint8_t bits_left = 0;
+
+    if (bits_left == 0) {
+        bits = xorshift32();
+        bits_left = 64;
+    }
+
+    int bit = bits & 1;
+    bits >>= 1;           
+    bits_left--;
+    return bit;
+}
+
 static inline uint64_t get_ns(void){
     #if defined(__x86_64__)
     uint64_t cycles = getticks();

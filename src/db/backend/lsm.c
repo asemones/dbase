@@ -52,9 +52,20 @@ void free_db_resource(db_resource * resource){
         }
     }
 }
+/*
 int restore_state(storage_engine * e ,int lost_tables){
     WAL* w = e->w;
+    const int flush_cadence = w->flush_cadence;
+    byte_buffer * buffers[NUM_WAL_SEGMENTS];
+    for (int i = 0; i < NUM_WAL_SEGMENTS; i++){
+        buffers[i]=  create_buffer(w->segments_manager.segment_capacity * 1.1);
+        char buf [256];
+        get_wal_fn(buf, i);
+        FILE * wal_f = fopen(buf, "rb");
+        fread(buffers[i], 1,, wal_f);
+    }
 }
+*/
 void clear_table(mem_table * table){
   
 
@@ -104,12 +115,14 @@ storage_engine * create_engine(char * file, char * bloom_file){
     engine->w = init_WAL(b);
     if (engine->w == NULL) return NULL;
     if (engine->meta->shutdown_status !=0){
-        restore_state(engine,1); /*change 1 to a variable when implementing error system. also remeber
+    /*restore_state(engine,1); change 1 to a variable when implementing error system. also remeber
         the stray skipbufs inside this function skipbuf*/
         // wtf is a skipbuf
     }
     engine->error_code = OK;
     engine->cm_ref = NULL;
+    engine->mana = create_manager(GLOB_OPTS.BLOCK_INDEX_SIZE, GLOB_OPTS.SST_TABLE_SIZE, GLOB_OPTS.index_cache_mem);
+
     return engine;
 }
 /*NO TOUCHING*/
@@ -167,91 +180,62 @@ int write_record(storage_engine* engine ,db_unit key, db_unit value){
     
     return 0;
 }
-size_t find_sst_file(list  *sst_files, size_t num_files, const char *key) {
-    size_t max_index = num_files;
-    size_t min_index = 0;
-    size_t middle_index;
-
-    while (min_index < max_index) {
-        middle_index = min_index + (max_index - min_index) / 2;
-        sst_f_inf *sst = at(sst_files, middle_index);
-        if (strcmp(key, sst->min) >= 0 && strcmp(key, sst->max) <= 0) {
-            return middle_index;
-        } 
-        else if (strcmp(key, sst->max) > 0) {
-            min_index = middle_index + 1;
-        } 
-        else {
-            
-            max_index = middle_index;
-        }
-    }
-    return 0;
-}
-
-size_t find_block(sst_f_inf *sst, const char *key) {
-    int left = 0;
-    int right = sst->block_indexs->len - 1;
-    int mid = 0;
-    while (left <= right) {
-        mid = left + (right - left) / 2;
-        block_index *index = at(sst->block_indexs, mid);
-        block_index *next_index = at(sst->block_indexs, mid + 1);
-
-        if (next_index == NULL || (strcmp(key, index->min_key) >= 0 && strcmp(key, next_index->min_key) < 0)) {
-            return mid;
-        }
-
-        if (strcmp(key, index->min_key) < 0) {
-            right = mid - 1;
-        } 
-        else {
-            left = mid + 1;
-        }
-    }
-
-    return mid;
-}
-/* this is our read path. This read path */
-
-db_resource disk_read(storage_engine * engine, const char * keyword){ 
-    
-    for (int i= 0; i < MAX_LEVELS; i++){
-        if (engine->meta->sst_files[i] == NULL || engine->meta->sst_files[i]->len ==0) continue;
-
-        list * sst_files_for_x = engine->meta->sst_files[i];
-        size_t index_sst = find_sst_file(sst_files_for_x, sst_files_for_x->len, keyword);
-        if (index_sst == -1) continue;
-        
-        sst_f_inf * sst = at(sst_files_for_x, index_sst);
-       
-        bloom_filter * filter=  sst->filter;
-        if (!check_bit(keyword,filter)) continue;
-       
-        size_t index_block= find_block(sst, keyword);
-        block_index * index = at(sst->block_indexs, index_block);
-        
-        cache_entry c = retrieve_entry_sharded(engine->cach, index, sst->file_name, sst);
-        if (c.buf== NULL ){
-             engine->error_code = INVALID_DATA;
-             db_resource src;
-             src.resource = NULL;
-             src.value.entry = NULL;
-             return src;
-        }
-        int k_v_array_index = json_b_search(c.ar, keyword);
-        if (k_v_array_index== -1) continue;
-
-        db_resource src;
-        src.resource = index->page;
-        src.value= c.ar->values[k_v_array_index]; 
-        src.src = CACHE;
-        return src;   
-    }
+db_resource return_bad_result(){
     db_resource src;
     src.resource = NULL;
     src.value.entry = NULL;
     return src;
+}
+db_resource get_key_from_block(shard_controller cach, sst_f_inf * sst, block_index * index ,const char * keyword){
+    cache_entry c = retrieve_entry_sharded(cach, index, sst->file_name, sst);
+    if (c.buf== NULL ){
+        return return_bad_result();
+    }   
+    int k_v_array_index = json_b_search(c.ar, keyword);
+    if (k_v_array_index== -1){
+        return return_bad_result();
+    }
+    db_resource src;
+    src.resource = index->page;
+    src.value= c.ar->values[k_v_array_index]; 
+    src.src = CACHE;
+    return src;   
+}
+
+/* this is our read path. This read path */
+db_resource scan_l_0(sst_manager * mana, shard_controller cach, const char * key){
+    uint32_t num = get_num_l_0(&mana);
+    db_resource ret;
+    ret.resource = NULL;
+    for (int i  = 0; i < num; i++){
+        sst_f_inf * sst=   get_sst(mana, key, 0);
+        int check = check_sst(mana,sst, key,0);
+        if (!check) continue;
+        block_index * ind = get_block(mana, sst, key, 0, 0);
+        if (ind == NULL) continue;
+        ret = get_key_from_block(cach, sst, ind, key);
+        if (ret.resource != NULL) return ret;
+    }
+    return ret;
+}
+db_resource disk_read(storage_engine * engine, const char * keyword){ 
+    {
+        db_resource l_0_test=  scan_l_0(&engine->mana, engine->cach,keyword);
+        if (l_0_test.resource != NULL){
+            return l_0_test;
+        }
+    }
+    for (int i= 1; i < MAX_LEVELS; i++){   
+        sst_f_inf * sst = get_sst(&engine->mana, keyword, i);
+        if (sst == NULL ) return;
+        int32_t part_ind = check_sst(&engine->mana, sst, keyword, i);
+        if (part_ind<= 0) continue;
+        block_index * ind = get_block(&engine->mana, sst, keyword, i, part_ind);
+        if (ind == NULL) continue;
+        db_resource src = get_key_from_block(engine->cach, sst, ind, keyword);
+        if (src.resource != NULL) return src;
+    }
+    return return_bad_result();
 }
 char * disk_read_snap(snapshot * snap, const char * keyword){ 
     
@@ -359,6 +343,8 @@ char* read_record_snap(storage_engine * engine, const char * keyword, snapshot *
    // We should not consult the live/active memtables for a snapshot read.
    return disk_read_snap(s, keyword);
 }
+/*l_0 tables will never have partitions, because thats extra work for no real gain. hence the reliance on the old block_indexs 
+infrastructure*/
 void seralize_table(SkipList * list, byte_buffer * buffer, sst_f_inf * s){
     if (list == NULL) return;
     Node * node = list->header->forward[0];
@@ -463,7 +449,8 @@ int flush_table(mem_table *table, storage_engine * engine){
 
     dbio_close(sst_f);
     return_buffer(buffer);
-    insert(meta->sst_files[0], sst);
+    add_sst(&engine->mana, *sst, 0);
+
     return 0;
 
 }
@@ -522,6 +509,7 @@ void free_engine(storage_engine * engine, char* meta_file,  char * bloom_file){
     kill_WAL(engine->w);
     free_pool(engine->write_pool, &free_buffer);
     free_shard_controller(&engine->cach);
+    free_sst_man(&engine->mana);
     free(engine);
     engine = NULL;
 }

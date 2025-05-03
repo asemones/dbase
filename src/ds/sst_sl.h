@@ -4,10 +4,9 @@
 #include <limits.h>
 #include <stdint.h>
 #include "byte_buffer.h"
-#include "../db/backend/key-value.h"
 #include "../util/error.h"
-#include "arena.h"
-
+#include "slab.h"
+#include "../db/backend/indexer.h"
 #pragma once
 
 #define MAX_LEVEL 16
@@ -18,25 +17,23 @@
  * @param value The value associated with the key
  * @param forward Array of pointers to next nodes at different levels
  */
-typedef struct Node {
-    db_unit key;
-    db_unit value;
-    struct Node* forward[];
-} Node;
+typedef struct sst_node {
+    sst_f_inf sst;
+    struct  sst_node* forward[];
+} sst_node;
 /**
  * @brief Skip list data structure for efficient key-value storage and retrieval
- * @struct SkipList
+ * @struct sst_sl
  * @param level Current maximum level in the skip list
  * @param header Pointer to the header node
  * @param compare Function pointer to the comparison function for keys
  */
-typedef struct SkipList {
+typedef struct sst_sl {
     int level;
     int use_default;
-    Node* header;
-    arena * arena;
-    int (*compare)(const void*, const void*);
-} SkipList;
+    sst_node * header;
+    slab_allocator allocator;
+} sst_sl;
 
 /**
  * @brief Inserts a key-value pair into the skip list
@@ -45,29 +42,15 @@ typedef struct SkipList {
  * @param value The value associated with the key
  * @return 0 on success, error code on failure
  */
-int insert_list(SkipList* list, db_unit key, db_unit value);
-
-/**
- * @brief Creates a new node for the skip list
- * @param level The level of the node
- * @param key The key to store in the node
- * @param value The value associated with the key
- * @return Pointer to the newly created node
- */\
-Node* create_skiplist_node(int level, db_unit key, db_unit value, arena * allocator);
+int sst_insert_list(sst_sl* list, sst_f_inf sst);
 
 /**
  * @brief Creates a new skip list
  * @param compare Function pointer to the comparison function for keys
  * @return Pointer to the newly created skip list
  */
-SkipList* create_skiplist(int max_nodes,int (*compare)(const void*, const void*));
+sst_sl* create_sst_sl(int max_nodes);
 
-/**
- * @brief Generates a random level for a new node
- * @return Random level between 1 and MAX_LEVEL
- */
-int random_level(void);
 
 /**
  * @brief Loads a skip list from a byte buffer stream
@@ -75,37 +58,24 @@ int random_level(void);
  * @param stream Pointer to the byte buffer containing the skip list data
  * @return Number of entries loaded or error code
  */
-int skip_from_stream(SkipList *s, byte_buffer *stream);
-int insert_list(SkipList* list, db_unit key, db_unit value);
+sst_sl* create_sst_sl(int max_nodes);
+sst_node* sst_search_list(sst_sl* list, const void * key);
 
-/**
- * @brief Searches for a key in the skip list
- * @param list Pointer to the skip list
- * @param key The key to search for
- * @return Pointer to the node containing the key, or NULL if not found
- */
-Node* search_list(SkipList* list, const void* key);
+sst_node* sst_search_list_prefix(sst_sl* list, void* key);
 
-/**
- * @brief Searches for a key prefix in the skip list
- * @param list Pointer to the skip list
- * @param key The key prefix to search for
- * @return Pointer to the first node with the matching prefix, or NULL if not found
- */
-Node* search_list_prefix(SkipList* list, void* key);
 
 /**
  * @brief Deletes a key-value pair from the skip list
  * @param list Pointer to the skip list
  * @param key The key to delete
  */
-void delete_element(SkipList* list, void* key);
+void sst_delete_element(sst_sl* list, void* key);
 
 /**
  * @brief Frees all memory allocated for the skip list
  * @param list Pointer to the skip list to free
  */
-void freeSkipList(SkipList* list);
+void freesst_sl(sst_sl* list);
 
 /**
  * @brief Comparison function for integer keys
@@ -124,4 +94,4 @@ int compareInt(const void* a, const void* b);
 static inline int compareString(const void* a, const void* b) {
     return strcmp((const char*)a, (const char*)b);
 }
-void reset_skip_list(SkipList* list);
+void reset_skip_list(sst_sl* list);

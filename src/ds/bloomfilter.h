@@ -3,6 +3,7 @@
 #include "../util/io.h"
 #include "byte_buffer.h"
 #include "../util/alloc_util.h"
+#include "slab.h"
 #ifndef BLOOMFILTER_H
 #define BLOOMFILTER_H
 
@@ -132,5 +133,6 @@ void copy_filter(bloom_filter * filter, byte_buffer* buffer);
  */
 bloom_filter* deep_copy_bloom_filter(const bloom_filter* original);
 void reset_filter(bloom_filter * f);
+bloom_filter  part_from_stream(byte_buffer * buffy_the_buffer, slab_allocator * allocator);
 #endif
 

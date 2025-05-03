@@ -60,6 +60,11 @@ future_t db_task_read_record(void * arg){
     char * result = read_record(args->shard->lsm, args->key.entry);
     cascade_return_ptr(result);
 }
+future_t db_task_read_slice(void * arg){
+    db_slice_read_args * args = arg;
+    *(args->out) = read_and_pin(args->shard->lsm, args->key.entry);
+    cascade_return_ptr(args->out);
+}
 future_t kill_db(void * arg){
     db_shard * shard = arg;
     shard->manager->exit =  true;
@@ -73,6 +78,5 @@ void db_end(db_shard * shard) {
     cascade_submit_external(shard->rt, NULL, &counter, kill_db ,shard);
     poll_rpc_external(shard->rt, &counter);
     end_runtime(shard->rt);
-    
 }
 

@@ -60,12 +60,25 @@ Index Structure:
  * @param use_dict_compression Flag indicating if dictionary compression is used
  * @param compr_info Compression information for the SST file
  */
+typedef struct sst_partition_ind{
+    const char * min_fence;
+    block_index * blocks;
+    uint16_t num_blocks;
+    bloom_filter * filter;
+    uint64_t off;
+    uint64_t len;
+    void * pg;
+}sst_partition_ind;
+
 typedef struct sst_file_info{
     char * file_name;
-    //size_t id;
+    size_t iter_ref_count;
     size_t length;
     size_t compressed_len;
-    list * block_indexs; //type:  block_index
+    union{
+        list * block_indexs; //type:  block_index, l_0 or maybe l1 too?
+        list * sst_partitions;
+    };
     char * max;
     char * min;
     struct timeval time;
@@ -78,7 +91,7 @@ typedef struct sst_file_info{
     sst_cmpr_inf compr_info;
 
 }sst_f_inf;
-
+int l = sizeof(sst_f_inf);
 /**
  * @brief Structure representing a block index in an SST file
  * @struct block_index
@@ -103,11 +116,6 @@ typedef struct block_index{
     void * page;
     block_type type;
 } block_index;
-/*
- * @brief Creates a new block index structure
- * @param est_num_keys Estimated number of keys in the block
- * @return Pointer to the newly created block index
- */
 block_index * create_block_index(size_t est_num_keys);
 inline int num_blocks_in_pg(block_index * blocks);
 static inline block_index * get_pg_header(block_index * blocks){
@@ -116,6 +124,9 @@ static inline block_index * get_pg_header(block_index * blocks){
         start --;
     }
     return &blocks[start];
+}
+static inline int compare_sst(sst_f_inf * one, sst_f_inf * two){
+    return strcmp(one->min, two->min);
 }
 /**
  * @brief Frees a block index structure
@@ -263,3 +274,4 @@ void free_sst_inf(void * ss);
  */
 void grab_min_b_key(block_index * index, byte_buffer *b, int loc);
 bool use_compression(sst_f_inf * f);
+uint64_t block_ind_size();

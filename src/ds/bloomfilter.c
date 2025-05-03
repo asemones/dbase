@@ -156,6 +156,18 @@ void free_filter( void*filter){
 void reset_filter(bloom_filter * f){
     memset(f->ba->array, 0, f->ba->size);
 }
+bloom_filter  part_from_stream(byte_buffer * buffy_the_buffer, slab_allocator * allocator){
+    bloom_filter b;
+    size_t tsize;
+    read_buffer(buffy_the_buffer, &tsize, sizeof(size_t));
+    
+    read_buffer(buffy_the_buffer, &b.num_hash, sizeof(size_t));
+    b.ba = slalloc(allocator, sizeof(b.ba));
+    b.ba->array = slalloc(allocator, sizeof(uint64_t) *tsize);
+    b.ba->size = tsize;
+    read_buffer(buffy_the_buffer, b.ba->array, tsize*sizeof(uint64_t));
+    return b;
+}
 bloom_filter * from_stream(byte_buffer * buffy_the_buffer){
     bloom_filter * b = (bloom_filter*)wrapper_alloc((sizeof(bloom_filter)), NULL,NULL);
     size_t tsize;

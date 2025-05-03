@@ -40,10 +40,13 @@ void init_mem_table_iters(mem_table_iter *mem_table_iters, storage_engine *s, si
     mem_table * table = s->active_table;
     mem_table_iters[0].t = table;
     mem_table_iters[0].cursor = table->skip->header->forward[0];
-    for (size_t i = 1; i < num_tables; i++) {
-        mem_table * table = s->flush_queue->array[i];
-        mem_table_iters[i].t = table;
-        mem_table_iters[i].cursor = table->skip->header->forward[0];
+    table->ref_count ++;
+    for (size_t i = 0; i < s->flush_queue->size; i++) {
+        mem_table * table = NULL;
+        memtable_queue_t_peek_slot_x(s->flush_queue, &table, i);
+        mem_table_iters[i+1].t = table;
+        mem_table_iters[i+1].cursor = table->skip->header->forward[0];
+        table->ref_count ++;
     }
 }
 void init_level_iters(level_iter *level_iters, storage_engine *s, size_t num_levels) {
@@ -64,7 +67,6 @@ void init_level_0_sst_iters(list *l_0_sst_iters, storage_engine *s) {
         sst_iter cursor;
         sst_f_inf* file = at(s->meta->sst_files[0], i);
         if (file == NULL){
-            l_0_sst_iters->len --;
             continue;
         }
         init_sst_iter(&cursor,file);
@@ -295,6 +297,18 @@ int write_db_entry(byte_buffer * b, void * element){
     size+= write_db_unit(b, *m->value);
     return size;
 }
+void free_iter_db_resources(aseDB_iter * iter){
+    for (int i = 0; i < iter->l_0_sst_iters->len;i++){
+        sst_iter * it = at(iter->l_0_sst_iters, i);
+        unpin_page(it->cursor.index->page); 
+        sst_f_inf * file = it->file;
+        it->file->iter_ref_count --;
+        if (it->file->iter_ref_count <= 0){
+
+        }
+    }
+}
+
 void free_aseDB_iter(aseDB_iter *iter) {
     free_list(iter->l_0_sst_iters, NULL);
     free(iter);

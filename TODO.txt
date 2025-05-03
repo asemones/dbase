@@ -86,3 +86,24 @@ determine how the compactor should operate:
 6. 
 
 work on memtable and cache pinning/unpinning
+iterator consistentccy
+rewrite all of the shitass meta data garbage
+
+
+consider no manifest
+
+backups/restore
+block index cache for mega databases
+sst manager and block/filter cache and parittioned filters\blocks
+skiplist for sst tables, not lists
+
+
+
+new file format:
+data blocks
+partition 1
+bloom, blocks 1 (4kb max)
+partition 2
+bloom, blocks 2
+partition n 
+bloom, blocks n

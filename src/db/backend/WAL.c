@@ -43,17 +43,26 @@ bool deserialize_wal_metadata(WAL *w, byte_buffer *b) {
 int rotate_wal_segment(WAL *w) {
     WAL_segments_manager *mgr = &w->segments_manager;
     int current_idx = mgr->current_segment_idx;
+    w->rotating = true;
     int next_idx = (current_idx + 1) % mgr->num_segments;
-
+    
     mgr->segments[current_idx].active = false;
     mgr->segments[next_idx].active = true;
     mgr->segments[next_idx].current_size = 0;
 
     mgr->current_segment_idx = next_idx;
-
     return 0;
 }
-
+int read_segement_header(byte_buffer * stream, char * time) {
+    char * start = go_nearest_v(stream, ':');
+    if (start == NULL) return -1;
+    start ++; /*skip a space*/
+    int size;
+    read_buffer(stream, &size, sizeof(size));
+    assert(size > 0 && size < 128 );
+    read_buffer(stream, time, size);
+    return size;
+}
 int flush_wal_buffer(WAL *w, db_unit k, db_unit v) {
     if (!w || !w->wal_buffer || w->wal_buffer->curr_bytes == 0) {
         return 0;
@@ -71,6 +80,14 @@ int flush_wal_buffer(WAL *w, db_unit k, db_unit v) {
         exit(EXIT_FAILURE);
     }
     w->wal_buffer = select_buffer(GLOB_OPTS.WAL_BUFFERING_SIZE);
+    if (current_segment->current_size + w->wal_buffer->max_bytes > w->segments_manager.segment_capacity){
+        char buf [128];
+        grab_time_char(buf);
+        current_segment->current_size += write_buffer(w->wal_buffer, "TIME: ", strlen("TIME: "));
+        int len = strlen(buf);
+        current_segment->current_size +=write_buffer(w->wal_buffer, &len, sizeof(len));
+        current_segment->current_size +=write_buffer(w->wal_buffer, buf, len);
+    }
     if (!w->wal_buffer) {
         fprintf(stderr, "CRITICAL: Failed to select new WAL buffer during flush. Aborting.\n");
         return_ctx(file_ctx);
@@ -80,10 +97,6 @@ int flush_wal_buffer(WAL *w, db_unit k, db_unit v) {
         current_segment->current_size += write_db_unit(w->wal_buffer, k);
         current_segment->current_size += write_db_unit(w->wal_buffer, v);
     }
-
-    file_ctx->offset = write_offset;
-    file_ctx->op = WRITE;
-    file_ctx->len = flush_size;
     set_context_buffer(file_ctx, buffer_to_flush);
 
     int submission_result = dbio_write(file_ctx, write_offset, flush_size);
@@ -99,7 +112,9 @@ int flush_wal_buffer(WAL *w, db_unit k, db_unit v) {
     }
     return flush_size;
 }
-
+void get_wal_fn(char * buf, int idx){
+    sprintf(buf, "WAL_SEG_%d.bin", idx);
+}
 WAL* init_WAL(byte_buffer *b) {
     WAL *w = malloc(sizeof(WAL));
     if (!w) {
@@ -107,12 +122,11 @@ WAL* init_WAL(byte_buffer *b) {
         exit(EXIT_FAILURE);
     }
     memset(w, 0, sizeof(WAL));
-
     WAL_segments_manager *mgr = &w->segments_manager;
     mgr->num_segments = NUM_WAL_SEGMENTS;
     mgr->segment_capacity = WAL_SEGMENT_SIZE;
     mgr->current_segment_idx = 0;
-
+    w->flush_cadence = 4096;
     for (int i = 0; i < mgr->num_segments; ++i) {
         WAL_segment *seg = &mgr->segments[i];
         sprintf(seg->filename, "WAL_SEG_%d.bin", i);
@@ -135,11 +149,12 @@ WAL* init_WAL(byte_buffer *b) {
     }
 
     w->wal_buffer = select_buffer(GLOB_OPTS.WAL_BUFFERING_SIZE);
+    
     if (!w->wal_buffer) {
         perror("CRITICAL: Failed to allocate initial WAL buffer");
         exit(EXIT_FAILURE);
     }
-
+    
     bool loaded_metadata = false;
     w->meta_ctx = dbio_open(GLOB_OPTS.WAL_M_F_N, 'r');
 
@@ -179,12 +194,18 @@ WAL* init_WAL(byte_buffer *b) {
         w->total_len = 0;
         struct db_FILE *trunc_ctx = dbio_open(mgr->segments[0].filename, 'w');
         if(trunc_ctx) dbio_close(trunc_ctx); else perror("Warning: Failed to truncate initial WAL segment");
-    }
-
+    } 
+    WAL_segments_manager * mrg = &w->segments_manager;
+    WAL_segment *  current_segment= &mrg->segments[w->segments_manager.current_segment_idx];
+    char buf [128];
+    grab_time_char(buf);
+    current_segment->current_size += write_buffer(w->wal_buffer, "TIME: ", strlen("TIME: "));
+    int len = strlen(buf);
+    current_segment->current_size +=write_buffer(w->wal_buffer, &len, sizeof(len));
+    current_segment->current_size +=write_buffer(w->wal_buffer, buf, len);
     // printf("WAL initialized. Active segment index: %d\n", mgr->current_segment_idx); // Reduced verbosity
     return w;
 }
-
 int write_WAL(WAL *w, db_unit key, db_unit value) {
     if (!w) return FAILED_TRANSCATION;
 
@@ -198,7 +219,7 @@ int write_WAL(WAL *w, db_unit key, db_unit value) {
     bool rotation_needed = (current_segment->current_size + data_size > mgr->segment_capacity);
     bool values_written  = false;
     if (rotation_needed) {
-    
+
         ret = rotate_wal_segment(w);
         if (ret != 0) return FAILED_TRANSCATION;
         if (w->wal_buffer && w->wal_buffer->curr_bytes > 0) {
@@ -212,14 +233,14 @@ int write_WAL(WAL *w, db_unit key, db_unit value) {
         values_written = true;
     }
 
-    bool buffer_flush_needed = (w->wal_buffer && (w->wal_buffer->curr_bytes + data_size > w->wal_buffer->max_bytes));
+    bool buffer_flush_needed = (w->wal_buffer && (w->wal_buffer->curr_bytes + data_size > w->flush_cadence));
     if (buffer_flush_needed) {
-         ret = flush_wal_buffer(w, key, value);
-         if (ret < 0) {
-             fprintf(stderr, "Error flushing WAL buffer before adding new data\n");
-             return FAILED_TRANSCATION;
-          }
-          values_written = true;
+        ret = flush_wal_buffer(w, key, value);
+        if (ret < 0) {
+            fprintf(stderr, "Error flushing WAL buffer before adding new data\n");
+            return FAILED_TRANSCATION;
+        }
+        values_written = true;
     }
 
     if (!w->wal_buffer) {
@@ -246,7 +267,6 @@ int write_WAL(WAL *w, db_unit key, db_unit value) {
 
     w->total_len++;
     current_segment->current_size += written_to_buffer;
-
     return 0;
 }
 
@@ -286,8 +306,7 @@ void kill_WAL(WAL *w) {
     if (w->wal_buffer) {
         return_buffer(w->wal_buffer);
         w->wal_buffer = NULL;
-    }
-
+    }  
     free(w);
     // printf("WAL killed.\n"); // Reduced verbosity
 }

@@ -31,6 +31,7 @@ byte_buffer * mem_aligned_buffer(size_t size, size_t alligment){
     return buffer;
     
 }
+
 /*resizes buffer to a size of atleast min-size bytes*/
 int buffer_resize(byte_buffer * b, size_t min_size){
     fprintf(stdout, "Buffer resize from %zu to %zu bytes. This may be a memory leak.\n"

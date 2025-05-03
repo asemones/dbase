@@ -46,6 +46,11 @@ typedef struct db_read_args{
     db_unit key;
     db_shard *shard;
 } db_read_args;
+typedef struct db_slice_read_args{
+    db_unit key;
+    db_shard *shard;
+    db_resource * out;
+} db_slice_read_args;
 
 future_t db_task_write_record(void *arg);
 future_t db_task_read_record(void * arg);

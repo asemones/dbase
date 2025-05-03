@@ -27,6 +27,7 @@ sst_f_inf create_sst_empty(){
     return file;
 
 }
+
 sst_f_inf create_sst_filter(bloom_filter * b){
     sst_f_inf file;
     file.block_indexs = List(0, sizeof(block_index), true);
@@ -110,6 +111,9 @@ block_index create_ind_stack(size_t  est_num_keys){
     index.page = NULL;
     return index;
 }
+uint64_t block_ind_size(){
+    return sizeof(block_index) + 40;
+}
 block_index * block_from_stream(byte_buffer * stream, block_index * index){
     read_buffer(stream, &index->offset, sizeof(size_t));
     read_buffer(stream,index->min_key, 40);
@@ -128,8 +132,20 @@ int block_to_stream(byte_buffer * targ, block_index * index){
     result = write_buffer(targ, &index->type, sizeof(index->type));
     return result;
 }
-int read_index_block(sst_f_inf * file, byte_buffer * stream)
-{
+sst_partition_ind * part_stream(byte_buffer * stream, sst_partition_ind * ind){
+    read_buffer(stream, &ind->off, sizeof(ind->off));
+    read_buffer(stream, &ind->len, sizeof(ind->len));
+    read_buffer(stream, &ind->num_blocks, sizeof(ind->num_blocks));
+    read_buffer(stream, &ind->min_fence, 40);
+    return ind;   
+}
+void part_to_stream(byte_buffer * stream, sst_partition_ind * ind){
+    write_buffer(stream, &ind->off, sizeof(ind->off));
+    write_buffer(stream, &ind->len, sizeof(ind->len));
+    write_buffer(stream, &ind->num_blocks, sizeof(ind->num_blocks));
+    write_buffer(stream, &ind->min_fence, 40);
+}
+int read_index_block(sst_f_inf * file, byte_buffer * stream){
     FILE * f = fopen(file->file_name, "rb");
     if (f == NULL) {
         return SST_F_INVALID;
@@ -248,7 +264,7 @@ void build_index(sst_f_inf * sst, block_index * index, byte_buffer * b, size_t n
     } 
     index->num_keys = num_entries;
     insert(sst->block_indexs, index);  
-}   
+}
 void free_sst_inf(void * ss){
     sst_f_inf * sst = (sst_f_inf*)ss;
     free_list(sst->block_indexs, &reuse_block_index);

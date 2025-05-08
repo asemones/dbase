@@ -140,5 +140,27 @@ static inline void b_seek(byte_buffer * buff, int pos){
 static inline void padd_buffer(byte_buffer * buffer, int to_pad){
     buffer->curr_bytes += to_pad;
 }
+static inline uint32_t read_int32(byte_buffer *buffer){
+    uint32_t dest;
+    memcpy(&dest, buffer->buffy + buffer->read_pointer, sizeof(int32_t));
+    buffer->read_pointer += sizeof(int32_t);
+    return dest;
+}
+static inline uint64_t read_int64(byte_buffer *buffer){
+    uint64_t dest;
+    memcpy(dest, buffer->buffy + buffer->read_pointer, sizeof(uint64_t));
+    buffer->read_pointer += sizeof(uint64_t);
+    return dest;
+}
+static inline int write_int64(byte_buffer *buffer, const uint64_t src){
+    memcpy(buffer->buffy + buffer->curr_bytes, &src, sizeof(uint64_t));
+    buffer->curr_bytes += sizeof(uint64_t);
+    return (int)sizeof(uint64_t);
+}
+static inline int write_int32(byte_buffer *buffer, const uint32_t src){
+    memcpy(buffer->buffy + buffer->curr_bytes, &src, sizeof(uint32_t));
+    buffer->curr_bytes += sizeof(uint32_t);
+    return (int)sizeof(uint32_t);
+}
 #endif
 

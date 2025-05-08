@@ -53,6 +53,7 @@ int write_buffer(byte_buffer * buffer, void* data, size_t size){
     buffer->curr_bytes += size;
     return 0;
 }
+
 int read_buffer(byte_buffer * buffer, void* dest, size_t len){
     if (buffer->read_pointer + len >= buffer->max_bytes){
         return -1;

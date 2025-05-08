@@ -1,14 +1,11 @@
 #include <stdlib.h>
-#include <pthread.h> // For mutex
-#include <stdbool.h> // For bool type if needed elsewhere
-
+#include <pthread.h>
+#include <stdbool.h> 
+#include <stdio.h>
 #ifndef STRUCTURE_POOL_H
 #define STRUCTURE_POOL_H
 
-// Define mutex types and operations for clarity/portability if needed elsewhere
-#define mutex pthread_mutex_t
-#define lock pthread_mutex_lock
-#define unlock pthread_mutex_unlock
+
 
 /**
  * @brief Pool of reusable structures implemented as a simple queue.
@@ -23,14 +20,13 @@
  * @param write_lock Mutex for thread-safe operations.
  */
 typedef struct struct_pool {
-    void** queue_buffer;    // Circular buffer for available struct pointers
-    void** all_ptrs;        // Holds all pointers ever added (for freeing)
-    size_t capacity;        // Max number of structs pool can manage
-    size_t size;            // Current number of *available* structs in queue
-    size_t head;            // Queue head index (dequeue)
-    size_t tail;            // Queue tail index (enqueue)
-    size_t total_managed;   // Count of structs currently tracked in all_ptrs
-    mutex write_lock;       // Mutex for thread safety
+    size_t capacity;       
+    size_t size;            
+    size_t head;            
+    size_t tail;           
+    size_t total_managed;  
+    void** queue_buffer;   
+    void** all_ptrs; 
 } struct_pool;
 
 /**
@@ -53,16 +49,34 @@ void insert_struct(struct_pool * pool, void * data);
  * @param pool Pointer to the structure pool.
  * @return Pointer to an available structure from the pool, or NULL if the pool is empty.
  */
-void * request_struct(struct_pool * pool);
+static inline void * request_struct(struct_pool *  restrict pool) {
+    if (__glibc_unlikely(pool->size == 0)) {    
+        return NULL;
+    }
+    void* ptr = pool->queue_buffer[pool->head];
+    pool->head++;
+    if (pool->head == pool->capacity){
+        pool->head = 0;
+    }
+    pool->size--;
+    return ptr;
+}
 
-/**
- * @brief Returns a structure pointer to the pool (enqueues it).
- * @param pool Pointer to the structure pool.
- * @param struct_ptr Pointer to the structure to return.
- * @param reset_func Optional function to reset the structure before returning it to the pool. Can be NULL.
- */
-void return_struct(struct_pool * pool, void * struct_ptr, void reset_func(void *));
+static inline void return_struct(struct_pool * restrict pool, void *  restrict struct_ptr, void reset_func(void*)) {
+   
+    if (reset_func != NULL) {
+        reset_func(struct_ptr);
+    }
+    pool->queue_buffer[pool->tail] = struct_ptr;
+    /*changing this from a % DOUBLES preformance*/
+    pool->tail = (pool->tail + 1);
+    if (pool->tail == pool->capacity){
+        pool->tail = 0;
+    }
+    pool->size++;
 
+
+}
 /**
  * @brief Frees the structure pool and all managed structures.
  * @param pool Pointer to the structure pool to free.

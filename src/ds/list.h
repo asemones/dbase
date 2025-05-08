@@ -23,8 +23,6 @@ typedef struct Lists{
     int dtS;
     bool isAlloc;
     bool thread_safe;
-    pthread_mutex_t write_lock;
-    pthread_mutex_t read_lock;
 }list;
 typedef int (*compare)( void* , void*);
 

@@ -31,7 +31,7 @@ sst_sl* create_sst_sl(int max_nodes) {
     list->use_default = 1;
     return list;
 }
-int random_level() {
+int random_level2() {
     int level = 1;
     while ((fast_coin()) && level < MAX_LEVEL) {
         level++;
@@ -48,7 +48,7 @@ int sst_insert_list(sst_sl* list, sst_f_inf sst) {
         update[i] = x;
     }
 
-    int level = random_level();
+    int level = random_level2();
     if (level > list->level) {
         for (int i = list->level; i < level; i++) {
             update[i] = list->header;

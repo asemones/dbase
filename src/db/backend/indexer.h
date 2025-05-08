@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include<stdlib.h>
 #include <stdint.h>
+#include <stddef.h> // For size_t
 #include "../../ds/list.h"
 #include "../../ds/bloomfilter.h"
 #include "../../util/alloc_util.h"
@@ -14,6 +15,7 @@
 #include "../../ds/associative_array.h"
 #include "../../ds/hashtbl.h"
 #include "compression.h"
+#include "../../ds/speedy_bloom.h"
 #define MAX_KEY_SIZE 100
 #define MAX_F_N_SIZE 64
 #pragma once
@@ -64,7 +66,7 @@ typedef struct sst_partition_ind{
     const char * min_fence;
     block_index * blocks;
     uint16_t num_blocks;
-    bloom_filter * filter;
+    bb_filter filter;
     uint64_t off;
     uint64_t len;
     void * pg;
@@ -76,8 +78,8 @@ typedef struct sst_file_info{
     size_t length;
     size_t compressed_len;
     union{
-        list * block_indexs; //type:  block_index, l_0 or maybe l1 too?
-        list * sst_partitions;
+        list *block_indexs; //type:  block_index, l_0 or maybe l1 too?
+        list* sst_partitions; // Reverted back to pointer
     };
     char * max;
     char * min;
@@ -91,7 +93,6 @@ typedef struct sst_file_info{
     sst_cmpr_inf compr_info;
 
 }sst_f_inf;
-int l = sizeof(sst_f_inf);
 /**
  * @brief Structure representing a block index in an SST file
  * @struct block_index
@@ -145,7 +146,7 @@ sst_f_inf create_sst_empty(void);
  * @param b Bloom filter to associate with the SST file
  * @return Newly created SST file info
  */
-sst_f_inf create_sst_filter(bloom_filter * b);
+sst_f_inf create_sst_filter();
 
 /**
  * @brief Performs a deep copy of an SST file info structure

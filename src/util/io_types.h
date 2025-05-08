@@ -16,7 +16,7 @@ struct struct_pool;
 #include "../ds/arena.h"
 #include "../ds/byte_buffer.h"
 #include "../ds/structure_pool.h"
-
+#include "../ds/buffer_pool_stratgies.h"
 
 enum operation{
     READ,
@@ -35,10 +35,10 @@ typedef struct io_batch_tuner{
     uint64_t last_recorded_ns;
     uint64_t io_req_in_slice;
 } io_batch_tuner;
-
 struct io_manager{
     int m_tbl_s;
     int sst_tbl_s;
+    buffer_pool pool;
     struct_pool * sst_table_buffers;
     struct_pool * mem_table_buffers;
     struct_pool * four_kb;

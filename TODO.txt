@@ -98,7 +98,7 @@ sst manager and block/filter cache and parittioned filters\blocks
 skiplist for sst tables, not lists
 
 
-
+figure out how to store bloom filters and blocks 
 new file format:
 data blocks
 partition 1

@@ -547,6 +547,8 @@ io_config create_io_config (){
     config.small_buff_s = 4096;
     config.coroutine_stack_size = 256;
     config.max_tasks = 50000;
+    config.buffer_pool = FIXED;
+    config.bp_memsize = 0;
     return config;
 }
 typedef struct runtime_spawn_args{
@@ -563,7 +565,8 @@ void spawn_runtime_internal(void * arg){
       const double rpc_overhead = 1.2;
       io_config config=  args->config;
       man = malloc(sizeof(*man));
-      io_prep_in(man, config.max_concurrent_io, config.max_concurrent_io, config.big_buf_s, config.huge_buf_s, config.num_huge_buf, config.num_big_buf, std_io_callback);
+      io_prep_in(man, config, std_io_callback);
+      /*sick of refactoring, so heres a lazy fix since this code should only be ran cpu cores * x */
       aco_t * main = aco_create(NULL, NULL, 0, NULL, NULL);
       args->runtime->main_co = main;
       args->runtime->scheduler.main_co = main;

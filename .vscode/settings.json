@@ -76,6 +76,8 @@
     "new": "c",
     "ostream": "c",
     "typeinfo": "c",
-    "random": "c"
+    "random": "c",
+    "compare": "c",
+    "cstdint": "c"
   }
 }

@@ -77,21 +77,3 @@ void sst_delete_element(sst_sl* list, void* key);
  */
 void freesst_sl(sst_sl* list);
 
-/**
- * @brief Comparison function for integer keys
- * @param a Pointer to the first integer
- * @param b Pointer to the second integer
- * @return Negative if a < b, 0 if a == b, positive if a > b
- */
-int compareInt(const void* a, const void* b);
-
-/**
- * @brief Comparison function for string keys
- * @param a Pointer to the first string
- * @param b Pointer to the second string
- * @return Negative if a < b, 0 if a == b, positive if a > b
- */
-static inline int compareString(const void* a, const void* b) {
-    return strcmp((const char*)a, (const char*)b);
-}
-void reset_skip_list(sst_sl* list);

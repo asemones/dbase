@@ -58,7 +58,6 @@ are acting on the old copies of the files, we can swap out the sst files.*/
  */
 typedef struct mem_table{
     size_t bytes;
-    bloom_filter *filter;
     size_t num_pair;
     bool immutable;
     char *range[2];

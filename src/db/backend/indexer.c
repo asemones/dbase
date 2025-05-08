@@ -1,5 +1,4 @@
 #include "indexer.h"
-#define NUM_HASH_BLOK 10
 #define NUM_HASH_SST 10
 #define MAX_KEY_SIZE 100
 #define TIME_STAMP_SIZE 32
@@ -28,22 +27,17 @@ sst_f_inf create_sst_empty(){
 
 }
 
-sst_f_inf create_sst_filter(bloom_filter * b){
+sst_f_inf create_sst_filter(){
     sst_f_inf file;
-    file.block_indexs = List(0, sizeof(block_index), true);
-    file.mem_store = calloc_arena(MEM_SIZE);
+    file.block_indexs = calloc(sizeof(list), 1);
     file.length = 0;
     file.block_start = -1;
-    file.filter = b;
     file.marked = false;
     file.in_cm_job = false;
     file.use_dict_compression = false; 
     init_sst_compr_inf(&file.compr_info, NULL);
     file.compressed_len = 0;
     gettimeofday(&file.time, NULL);
-    file.max = arena_alloc(file.mem_store, MAX_KEY_SIZE);
-    file.min = arena_alloc(file.mem_store, MAX_KEY_SIZE);
-    file.file_name = arena_alloc(file.mem_store, MAX_F_N_SIZE);
     return file;
 
 }

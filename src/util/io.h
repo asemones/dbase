@@ -149,7 +149,7 @@ int process_completions(struct io_uring *ring);
 int chain_open_op_close(struct io_uring *ring, struct io_manager * m, struct db_FILE * req);
 void init_db_FILE_ctx(const int max_concurrent_ops, db_FILE * dbs);
 void return_buffer(byte_buffer * buff);
-void io_prep_in(struct io_manager * io_manager, int small, int max_concurrent_ops, int big_s, int huge_s, int num_huge, int num_big, aio_callback std_func);
+void io_prep_in(struct io_manager * io_manager, io_config config, aio_callback std_func);
 bool try_submit_interface(struct io_uring *ring);
 void perform_tuning(io_batch_tuner *t);
 #endif

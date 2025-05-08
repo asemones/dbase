@@ -149,7 +149,8 @@ typedef struct io_config{
     int small_buff_s;
     int coroutine_stack_size;
     int max_tasks;
-
+    int buffer_pool;
+    int bp_memsize;
 }io_config;
 /*why do we have p_id and parent? because parent is a memory address that should not be accessed
 accross shards and especially accross frameworks. it could potentially be a read from a different numa node*/

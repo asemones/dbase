@@ -14,17 +14,11 @@ mem_table * create_table(){
     mem_table * table = (mem_table*)wrapper_alloc((sizeof(mem_table)), NULL,NULL);
     if (table == NULL) return NULL;
     table->bytes = 0;
-    table->filter = bloom(NUM_HASH,NUM_WORD,false, NULL);
-    if (table->filter == NULL){
-        free(table);
-        return NULL;
-    } 
     table->immutable = false;
     table->num_pair = 0;
     const int est_max_nodes= GLOB_OPTS.MEM_TABLE_SIZE / 4;
     table->skip = create_skiplist(est_max_nodes,&compareString);
     if (table->skip == NULL) {
-        free_filter(table->filter);
         free(table);
         return NULL;
     }
@@ -70,7 +64,6 @@ void clear_table(mem_table * table){
   
 
     reset_skip_list(table->skip);
-    table->filter =  bloom(NUM_HASH,NUM_WORD,false, NULL);
     const int est_max_nodes= GLOB_OPTS.MEM_TABLE_SIZE / 4;
     table->skip = create_skiplist(est_max_nodes,&compareString);
     table->bytes = 0;
@@ -154,7 +147,6 @@ int handle_annoying_ass_fucking_edge_case_fuck(storage_engine* engine ,db_unit k
     insert_list(table->skip, key, value);
     table->num_pair++;
     table->bytes += 4 + key.len + value.len;
-    map_bit(key.entry, table->filter);
     return 0;
 }
 int write_record(storage_engine* engine ,db_unit key, db_unit value){
@@ -176,7 +168,6 @@ int write_record(storage_engine* engine ,db_unit key, db_unit value){
     insert_list(table->skip, key, value);
     table->num_pair++;
     table->bytes += 4 + key.len + value.len;
-    map_bit(key.entry, table->filter);
     
     return 0;
 }
@@ -204,7 +195,7 @@ db_resource get_key_from_block(shard_controller cach, sst_f_inf * sst, block_ind
 
 /* this is our read path. This read path */
 db_resource scan_l_0(sst_manager * mana, shard_controller cach, const char * key){
-    uint32_t num = get_num_l_0(&mana);
+    uint32_t num = get_num_l_0(mana);
     db_resource ret;
     ret.resource = NULL;
     for (int i  = 0; i < num; i++){
@@ -227,7 +218,7 @@ db_resource disk_read(storage_engine * engine, const char * keyword){
     }
     for (int i= 1; i < MAX_LEVELS; i++){   
         sst_f_inf * sst = get_sst(&engine->mana, keyword, i);
-        if (sst == NULL ) return;
+        if (sst == NULL ) return return_bad_result();
         int32_t part_ind = check_sst(&engine->mana, sst, keyword, i);
         if (part_ind<= 0) continue;
         block_index * ind = get_block(&engine->mana, sst, keyword, i, part_ind);
@@ -410,8 +401,8 @@ int flush_table(mem_table *table, storage_engine * engine){
     meta_data * meta = engine->meta;
     
     sst_f_inf *sst = pad_allocate(sizeof(*sst));
-    *sst =  create_sst_filter(table->filter);
-    table->filter = NULL;
+    allocate_sst(&engine->mana, sst, table->num_pair);
+    //*sst =  create_sst_filter(table->filter);
     byte_buffer * buffer = select_buffer(GLOB_OPTS.MEM_TABLE_SIZE);
     if (table->bytes <= 0) {
         printf("DEBUG: Table bytes <= 0, skipping flush\n");
@@ -458,9 +449,6 @@ void free_one_table(void* table){
     mem_table * m_table= table;
    
     freeSkipList(m_table->skip);
-    if (m_table->num_pair <= 0) free_filter(m_table->filter);
-    else free(m_table->filter);
-    m_table->filter = NULL;
     table = NULL;
 }
 void dump_tables(storage_engine * engine){

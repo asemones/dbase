@@ -85,6 +85,7 @@ typedef struct sst_file_info{
     char * min;
     struct timeval time;
     size_t block_start;
+    size_t part_start;
     bloom_filter * filter;
     arena * mem_store;
     bool marked;
@@ -276,3 +277,5 @@ void free_sst_inf(void * ss);
 void grab_min_b_key(block_index * index, byte_buffer *b, int loc);
 bool use_compression(sst_f_inf * f);
 uint64_t block_ind_size();
+int all_stream_index(size_t num_table, byte_buffer* stream, block_index * indexes);
+void dump_sst_meta_part(sst_f_inf * to_write, byte_buffer * b, uint64_t part_start_4k_alligned, list * blocks);

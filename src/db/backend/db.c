@@ -50,8 +50,7 @@ future_t db_task_write_record(void *arg) {
     
     // Call the original write_record function using the lsm from the shard
     int result = write_record(write_args->shard->lsm, write_args->key, write_args->value);
-    
-    // Package the result into a future_t
+
     cascade_return_int(result);
 }
 

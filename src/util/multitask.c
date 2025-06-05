@@ -549,6 +549,7 @@ io_config create_io_config (){
     config.max_tasks = 50000;
     config.buffer_pool = FIXED;
     config.bp_memsize = 0;
+    memset(&config.confg, 0, sizeof(size_tier_config));
     return config;
 }
 typedef struct runtime_spawn_args{

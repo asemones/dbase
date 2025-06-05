@@ -56,6 +56,8 @@ typedef struct option{
     int index_cache_mem;
     int bits_per_key;
     int partition_size; /* in terms of block index data*/
+    long value_log_threshold;
+    long v_l_large_threshold;
 }option;
 
 /**
@@ -92,6 +94,8 @@ static inline void set_defaults(option * opt){
     opt->index_cache_mem = 1024 * 1024 * 64;
     opt->bits_per_key = 10;
     opt->partition_size = 16384;
+    opt->value_log_threshold = 512 ;
+    opt->v_l_large_threshold = 1024 * 128;
 
 }
 static inline void set_debug_defaults(option * opt){
@@ -121,6 +125,8 @@ static inline void set_debug_defaults(option * opt){
     opt->index_cache_mem = 1024 * 1024;
     opt->bits_per_key = 10;
     opt->partition_size = 16384;
+    opt->value_log_threshold = 512;
+    opt->v_l_large_threshold = 1024 * 64;
 }
 
 

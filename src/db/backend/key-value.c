@@ -5,7 +5,6 @@
 #define FLOAT 1 
 #define STR 2
 int write_db_unit(byte_buffer * b, db_unit u){
-
     write_buffer(b, (char*)&u.len, sizeof(u.len));
     write_buffer(b,(char*)u.entry, u.len );
     return sizeof(u.len) + u.len;
@@ -14,6 +13,7 @@ void read_db_unit(byte_buffer * b, db_unit  *u){
     read_buffer(b, (char*)&u->len, sizeof(u->len));
     read_buffer(b,(char*)u->entry, u->len);
 }
+
 size_t load_block_into_into_ds(byte_buffer *stream, void *ds, void (*func)(void *, void *, void *)) {
     size_t num_bytes = 0;  
     u_int16_t num_entries;

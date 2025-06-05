@@ -54,6 +54,7 @@ static inline void * request_struct(struct_pool *  restrict pool) {
         return NULL;
     }
     void* ptr = pool->queue_buffer[pool->head];
+    /*why no mod instead? mod doublex execution time*/
     pool->head++;
     if (pool->head == pool->capacity){
         pool->head = 0;

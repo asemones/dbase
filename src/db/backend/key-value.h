@@ -6,19 +6,27 @@
 #include "option.h"
 #include <stdint.h>
 
-
-
+#define INLINE_CAP 8
+#define V_LOG_TOMBSTONE UINT16_MAX
 /**
  * @brief Basic unit for storing database entries
  * @struct db_unit
  * @param len Length of the entry in bytes
  * @param entry Pointer to the actual data
  */
+
 typedef struct db_unit{
     u_int16_t len;
-    void * entry;
+    union {
+        void * entry;
+    };
 }db_unit;
-
+typedef struct db_large_unit{
+    uint64_t len;
+    union{
+        void * entry;
+    };
+}db_large_unit;
 #pragma once
 /* for comparison functions*/
 /*NEW STORAGE FORMAT: 

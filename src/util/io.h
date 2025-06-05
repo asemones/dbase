@@ -33,10 +33,20 @@ static inline void  dbio_close(struct db_FILE * request){
     request = NULL;
 }
 static inline int dbio_write(struct db_FILE * request, off_t off, size_t len){
+    request->op = WRITE;
     return do_write(request, off, len,man);
 }
 static inline int dbio_read(struct db_FILE * request, off_t off, size_t len){
+    request->op = READ;
     return do_read(request, off, len,man);
+}
+static inline int dbio_unfixed_read(struct db_FILE * request, off_t off, size_t len){
+    request->op = UNFIXED_READ;
+    return do_read(request, off, len,man);
+}
+static inline int dbio_unfixed_write(struct db_FILE * request, off_t off, size_t len){
+    request->op = UNFIXED_WRITE;
+    return do_write(request, off, len,man);
 }
 static inline void dbio_fsync(struct db_FILE * request){
     do_fsync(request, man);

@@ -30,7 +30,6 @@ typedef struct cache_entry {
     struct_pool * loc;
     int idx;
 } cache_entry;
-
 /**
  * @brief Cache structure implementing a clock replacement policy
  * @struct cache

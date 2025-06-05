@@ -18,6 +18,7 @@ typedef struct partiton_cache_element{
 typedef struct sst_allocator{
     slab_allocator cached;
     slab_allocator non_cached;
+    slab_allocator partition_filter_allocator;
 }sst_allocator;
 typedef struct index_cache {
     size_t capacity;

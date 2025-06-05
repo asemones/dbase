@@ -101,9 +101,9 @@ skiplist for sst tables, not lists
 figure out how to store bloom filters and blocks 
 new file format:
 data blocks
-partition 1
-bloom, blocks 1 (4kb max)
-partition 2
-bloom, blocks 2
-partition n 
-bloom, blocks n
+partition 1 ...x
+(blocks, bloom) 1.... (blocks,bloom) x
+intergrate buffer pool strategies + fixed setup
+record level cache
+have the compactor work with the new sst manager/system, hold off for now until above is working;
+big and little edian support

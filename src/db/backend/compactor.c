@@ -161,16 +161,30 @@ int write_blocks_to_file(byte_buffer *dest_buffer, byte_buffer * compression_buf
         curr_sst->block_start = curr_sst->length; // Metadata starts after uncompressed data
     }
     curr_sst->block_start = dbio_write(curr_file, 0, dest_buffer->curr_bytes);
-    dbio_fsync(curr_file);
+    //dbio_fsync(curr_file); No point in an fsync; we fsync on METADATA write
     return skipped;
+}
+void process_non_cached(byte_buffer *dest_buffer, sst_f_inf *curr_sst, db_FILE * curr_file ,compact_job_internal*job, int sst_b_count, list * block_indexes){
+    reset_buffer(dest_buffer);
+    block_index * b_0= at(block_indexes,0);
+    memcpy(curr_sst->min, b_0->min_key, 40);
+    dump_sst_meta_part(curr_sst, dest_buffer, curr_sst->block_start, block_indexes);
+    if (curr_sst->compr_info.dict_len > 0){
+        write_buffer(dest_buffer, curr_sst->compr_info.dict_buffer, curr_sst->compr_info.dict_len);
+    }
+    dbio_write(curr_file, curr_sst->block_start, dest_buffer->curr_bytes);
+    dbio_fsync(curr_file);
+    dbio_close(curr_file);
+
+    gettimeofday(&curr_sst->time, NULL);
+    insert(job->new_sst_files, curr_sst);
+    memset(curr_sst, 0, sizeof(*curr_sst));
 }
 void process_sst(byte_buffer *dest_buffer, sst_f_inf *curr_sst, db_FILE * curr_file ,compact_job_internal*job, int sst_b_count) {
     reset_buffer(dest_buffer);
     block_index * b_0= at(curr_sst->block_indexs,0);
     memcpy(curr_sst->min, b_0->min_key, 40);
-    for (int i = 0; i < curr_sst->block_indexs->len; i++) {
-        block_to_stream(dest_buffer, at(curr_sst->block_indexs, i));
-    }
+    all_index_stream(curr_sst->block_indexs->len, dest_buffer,curr_sst->block_indexs);
     copy_filter(curr_sst->filter, dest_buffer);
     if (curr_sst->compr_info.dict_len > 0){
         write_buffer(dest_buffer, curr_sst->compr_info.dict_buffer, curr_sst->compr_info.dict_len);

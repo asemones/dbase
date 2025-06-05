@@ -8,7 +8,6 @@ byte_buffer * create_buffer(size_t size){
     buffer->max_bytes = size;
     buffer->curr_bytes = 0;
     buffer->read_pointer = 0;
-    buffer->utility_ptr = NULL;
     return buffer;
 }
 byte_buffer * mem_aligned_buffer(size_t size, size_t alligment){
@@ -27,9 +26,13 @@ byte_buffer * mem_aligned_buffer(size_t size, size_t alligment){
     buffer->max_bytes = size;
     buffer->curr_bytes = 0;
     buffer->read_pointer = 0;
-    buffer->utility_ptr = NULL;
     return buffer;
     
+}
+byte_buffer * create_empty_buffer(){
+    byte_buffer * buffer = malloc(sizeof(byte_buffer));
+    memset(buffer, 0, sizeof(byte_buffer));
+    return buffer;
 }
 
 /*resizes buffer to a size of atleast min-size bytes*/

@@ -4,19 +4,17 @@
 #include <sys/mman.h>
 #include "slab.h"
 #include "byte_buffer.h"
+#include "buddy_page.h"
 enum buffer_pool_strategies{
     FIXED,
     VM_MAPPED,
     PINNED_BUDDY
 };
-typedef struct buddy_node{
-    char * mem;
-    buddy_node * next;
-}buddy_node;
-typedef struct buddy_list{
-    uint64_t order;
-    buddy_node * head;
-}buddy_list;
+enum buddy_stat{
+    FREE,
+    ALLOC,
+    SPLIT
+};
 
 typedef struct size_tier_config{
     uint32_t start;
@@ -33,7 +31,7 @@ typedef struct vm_mapped_strategy{
 }vm_mapped_strategy;
 typedef struct pinned_buddy_strategy{
     void * pinned;
-    buddy_list * lists;
+    buddy_allocator alloc;
     size_tier_config config;
 }pinned_buddy_strategy;
 typedef union b_p_strategy{
@@ -48,8 +46,9 @@ typedef struct buffer_pool{
         vm_mapped_strategy vm;
         fixed_strategy trad;
     };
-    
-
+    struct_pool * empty_buffers;
 } buffer_pool;
-buffer_pool make_b_p(uint8_t strategy,uint64_t mem_size);
-
+buffer_pool make_b_p(uint8_t strategy,uint64_t mem_size, size_tier_config config);
+void end_b_p(buffer_pool * pool);
+byte_buffer *  get_buffer(buffer_pool pool, uint64_t size);
+void return_buffer_strat(buffer_pool pool, byte_buffer * b);

@@ -65,6 +65,7 @@ void handle_checksum_error(cache * c, db_FILE * sst_file, byte_buffer * buffer){
         fprintf(stderr, "invalid data\n");
         dbio_close(sst_file);
 }
+
 cache_entry retrieve_entry_no_prefetch(cache *c, block_index *index, const char *file_name, sst_f_inf *sst) {
     if (index->page) {
         cache_entry * pg = index->page;
@@ -130,10 +131,10 @@ cache_entry retrieve_entry_no_prefetch(cache *c, block_index *index, const char 
 }
 
 void pin_page(cache_entry *c) {
-    __sync_fetch_and_add(&c->ref_count, 1);
+   &c->ref_count ++;
 }
 void unpin_page(cache_entry *c) {
-    __sync_fetch_and_sub(&c->ref_count, 1);
+    &c->ref_count --;
     if (c->ref_count <= 0 && c->loc == NULL ){
         return_struct(man->four_kb, c->buf, &reset_buffer);
         c = NULL; // Assuming 'buffer' is the pointer corresponding to 'c->idx' and no reset needed

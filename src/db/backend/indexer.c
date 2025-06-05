@@ -105,25 +105,33 @@ block_index create_ind_stack(size_t  est_num_keys){
     index.page = NULL;
     return index;
 }
+block_index * create_block_views(byte_buffer * storage, int num_blocks){
+    block_index * ind;
+    ind = get_curr(storage);
+    for (int i  =0; i < num_blocks; i++){
+        ind.
+    }
+    ind = get_curr(storage);
+    ind->min_key = &ind->min_key + sizeof(ind->min_key);
+    return ind;
+}
 uint64_t block_ind_size(){
     return sizeof(block_index) + 40;
 }
 block_index * block_from_stream(byte_buffer * stream, block_index * index){
     read_buffer(stream, &index->offset, sizeof(size_t));
-    read_buffer(stream,index->min_key, 40);
     read_buffer(stream, &index->len, sizeof(size_t));
     read_buffer(stream, &index->num_keys, sizeof(index->num_keys));
     read_buffer(stream, &index->checksum, sizeof(index->checksum));
     read_buffer(stream, &index->type, sizeof(index->type));
     return index;
 }
-int block_to_stream(byte_buffer * targ, block_index * index){
-    int result = write_buffer(targ, (char*)&index->offset, sizeof(size_t));
-    result = write_buffer(targ,index->min_key,40);
-    result = write_buffer(targ, (char*)&index->len, sizeof(size_t));
-    result = write_buffer(targ, &index->num_keys, sizeof(&index->num_keys));
-    result = write_buffer(targ, &index->checksum, sizeof(index->checksum));
-    result = write_buffer(targ, &index->type, sizeof(index->type));
+int block_to_stream(byte_buffer * targ, block_index index){
+    int result = write_buffer(targ, (char*)&index.offset, sizeof(size_t));
+    result = write_buffer(targ, (char*)&index.len, sizeof(size_t));
+    result = write_buffer(targ, &index.num_keys, sizeof(&index->num_keys));
+    result = write_buffer(targ, &index.checksum, sizeof(index->checksum));
+    result = write_buffer(targ, &index.type, sizeof(index->type));
     return result;
 }
 sst_partition_ind * part_stream(byte_buffer * stream, sst_partition_ind * ind){
@@ -132,6 +140,9 @@ sst_partition_ind * part_stream(byte_buffer * stream, sst_partition_ind * ind){
     read_buffer(stream, &ind->num_blocks, sizeof(ind->num_blocks));
     read_buffer(stream, &ind->min_fence, 40);
     return ind;   
+}
+uint64_t future_part_bytes(){
+    return sizeof(ind->off) + sizeof(ind->len) +  sizeof(ind->num_blocks) + 40;
 }
 void part_to_stream(byte_buffer * stream, sst_partition_ind * ind){
     write_buffer(stream, &ind->off, sizeof(ind->off));
@@ -174,14 +185,61 @@ int read_index_block(sst_f_inf * file, byte_buffer * stream){
     fclose(f);
     return 0;
 }
-
-int all_index_stream(size_t num_table, byte_buffer* stream, list * indexes){
+void dump_block_min_keys( byte_buffer* stream,  block_index * arr , int num){
+    for (int i = 0; i < num; i++){
+        db_unit u;
+        u.len = 40;
+        u.entry = arr[i].min_key;
+        write_db_unit(stream, *u);
+    }   
+}
+void read_block_min_keys(byte_buffer* stream,  block_index * arr, int num){
+    for (int i  = 0; i < num; i++){
+        db_unit u;
+        read_db_unit(stream, &u);
+        arr[i].min_key = u.entry;
+    }
+}
+int all_stream_index(size_t num_table, byte_buffer* stream, block_index * indexes){
     int ret =0;
     for (int i = 0; i < num_table; i ++){
-        block_index * index =(block_index*)at(indexes, i);
-        ret = block_to_stream(stream, index);
+        ret = block_from_stream(stream, indexes[i]);
         if (ret != 0 ){
             return STRUCT_NOT_MADE;
+        }
+    }
+    read_block_min_keys(stream, indexes, num_table);
+}
+int all_index_stream(size_t num_table, byte_buffer* stream, list * indexes){
+    int ret =0;
+    block_index * arr = indexes->arr;
+    for (int i = 0; i < num_table; i ++){
+        ret = block_to_stream(stream, arr[i]);
+        if (ret != 0 ){
+            return STRUCT_NOT_MADE;
+        }
+    }
+    dump_block_min_keys(stream, arr, num_table);
+    return 0;
+}
+int all_index_stream_part(size_t num_table, byte_buffer* stream, list * indexes, sst_partition_ind * parts){
+    int ret =0;
+    block_index * arr = indexes->arr;
+    uint64_t part_counter = 0;
+    uint64_t curr_part = 0;
+    for (int i = 0; i < num_table; i ++){
+        if (part_counter == parts[curr_part].num_blocks) {
+            dump_block_min_keys(stream, &arr[i], part_counter);
+            serialize_filter(stream, parts[curr_part].filter);
+            part_counter = 0;
+            curr_part++;
+        }
+        ret = block_to_stream(stream, arr[i]);
+        if (ret != 0 ){
+            return STRUCT_NOT_MADE;
+        }
+        else{
+            part_counter ++;
         }
     }
     return 0;
@@ -324,4 +382,30 @@ int prefix_b_search(k_v_arr *json, const char *target) {
     }
 
     return result;
+}
+void write_all_sst_parts(sst_f_inf * sst, byte_buffer * stream, list * blocks){
+    sst_partition_ind * parts  = sst->sst_partitions->arr;
+    uint64_t bytes = to_write->sst_partitions->len * future_part_bytes();
+    uint64_t multipler = block_ind_size();
+    for (int i  =0; i < parts->sst_partitions->len; i++){
+        parts[i].off = bytes + (multipler * i);
+        part_to_stream(stream, &parts[i]);
+    }
+}
+void read_sst_parts(sst_f_inf * to_read, byte_buffer * b,  uint64_t total_size){
+    db_FILE * file = dbio_open(to_read->file_name, 'r');
+    set_context_buffer(b);
+    dbio_read(file, to_read->part_start, total_size);// (part_size - block_start);
+    dbio_close(file);
+    sst_partition_ind ind;
+    for (int i = 0; i < to_read->part_start; i++){
+        part_stream(b, &ind);
+        insert(to_read->sst_partitions, &ind);
+    }
+}
+void dump_sst_meta_part(sst_f_inf * to_write, byte_buffer * b, uint64_t part_start_4k_alligned, list * blocks){
+    write_all_sst_parts(to_write, b, blocks);
+    to_write->part_start = part_start_4k_alligned;
+    to_write->block_start = part_start_4k_alligned + b->curr_bytes;
+    all_index_stream_part(blocks->len,b, blocks, to_write->sst_partitions->arr);
 }

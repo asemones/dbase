@@ -78,6 +78,13 @@
     "typeinfo": "c",
     "random": "c",
     "compare": "c",
-    "cstdint": "c"
+    "cstdint": "c",
+    "__bit_reference": "c",
+    "__hash_table": "c",
+    "__split_buffer": "c",
+    "unordered_map": "c"
+  },
+  "files.watcherExclude": {
+    "**/target": true
   }
 }

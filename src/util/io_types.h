@@ -20,9 +20,12 @@ struct struct_pool;
 
 enum operation{
     READ,
+    UNFIXED_READ,
+    UNFIXED_WRITE,
     WRITE,
     OPEN,
     CLOSE,
+
 };
 
 typedef void (*aio_callback)(void *arg);
@@ -38,6 +41,7 @@ typedef struct io_batch_tuner{
 struct io_manager{
     int m_tbl_s;
     int sst_tbl_s;
+    int max_buffer_size;
     buffer_pool pool;
     struct_pool * sst_table_buffers;
     struct_pool * mem_table_buffers;
@@ -49,6 +53,7 @@ struct io_manager{
     int total_buffers;
     int num_segments;
     struct iovec *iovecs;
+    int num_io_vecs;
     int pending_sqe_count;      
     struct timespec first_sqe_timestamp; 
     io_batch_tuner tuner;
@@ -65,15 +70,15 @@ union descriptor{
 
 typedef struct db_FILE {
     union descriptor desc;
-    int priority;
     off_t offset;
-    mode_t perms;
     size_t len;
-    int flags;
     aio_callback callback;
     void *callback_arg;
     enum operation op;
+    mode_t perms;
     byte_buffer* buf;
+    int priority;
     int response_code;
+    int flags;
 } db_FILE;
-#endif // IO_TYPES_H
+#endif 

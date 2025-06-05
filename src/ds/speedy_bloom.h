@@ -40,11 +40,13 @@ static inline seralize_filter(byte_buffer * b, bb_filter f){
     uint64_t size = C_LINE * f.bucket_cnt;
     write_buffer(b, f.data, size);
 }
-static inline deseralize_filter(byte_buffer * b, bb_filter f){
-    f.bucket_mask = read_int32(b);
-    f.bucket_cnt = read_int32(b);
-    uint64_t size = C_LINE * f.bucket_cnt;
-    read_buffer(b, f.data, size);
+static inline deseralize_filter_head(byte_buffer * b, bb_filter * f){
+    f->bucket_mask = read_int32(b);
+    f->bucket_cnt = read_int32(b);
+}
+static inline deseralize_filter_body(byte_buffer * b, bb_filter * f){
+    b_seek(b, b->curr_bytes + sizeof(f));
+    f->data = get_curr(b);
 }
 static int bb_filter_init_pow2(bb_filter *f, uint32_t log2_buckets){
     f->bucket_cnt = 1u << log2_buckets;

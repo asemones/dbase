@@ -5,6 +5,7 @@
 #include "../ds/list.h"
 #include "aco.h"
 #include "../ds/circq.h"
+#include "../ds/buffer_pool_stratgies.h"
 #include <pthread.h>
 #include <liburing.h>
 #include <stdint.h>
@@ -151,6 +152,7 @@ typedef struct io_config{
     int max_tasks;
     int buffer_pool;
     int bp_memsize;
+    size_tier_config config;
 }io_config;
 /*why do we have p_id and parent? because parent is a memory address that should not be accessed
 accross shards and especially accross frameworks. it could potentially be a read from a different numa node*/

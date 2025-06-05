@@ -21,7 +21,6 @@
 typedef struct byte_buffer {
     char * buffy;
     size_t id; /*to register buffers with the kernel*/
-    void * utility_ptr;
     size_t max_bytes;
     size_t curr_bytes;
     size_t read_pointer;
@@ -162,5 +161,6 @@ static inline int write_int32(byte_buffer *buffer, const uint32_t src){
     buffer->curr_bytes += sizeof(uint32_t);
     return (int)sizeof(uint32_t);
 }
+byte_buffer * create_empty_buffer();
 #endif
 

@@ -60,6 +60,19 @@ int add_fsync_request(struct io_uring *ring, struct db_FILE * file, int seq) {
     
     return 0;
 }
+int register_logical_strat(struct io_manager *manage,const int max_single_buffer, int curr){
+    struct_pool * pools [2];
+    pools[0] = manage->sst_table_buffers;
+    pools[1] = manage->mem_table_buffers;
+    int curr_mem = 0;
+    for (int i = 0; i < sizeof(pools)/ sizeof(pools[0]); i++){
+        for (int j = 0; j < pools[i]->capacity; j++){
+            byte_buffer * buf = pools[i]->all_ptrs[j];
+            buf->id = curr_mem / max_single_buffer + curr;
+            curr_mem += buf->max_bytes;
+        }
+    }
+}
 int register_logical_segments(struct io_manager *manage, const int max_single_buffer) {
     struct_pool * pools [3];
     pools[0] = manage->four_kb;
@@ -90,9 +103,8 @@ void init_io_manager_not_fixed(struct io_manager * manage, int num_sst_tble, int
     size_t total_size = (num_memtable * mem_tbl_s) + (num_sst_tble * sst_tbl_s);
     
     const int physical_buffers = ceil_int_div(total_size, max_single_buffer);
-
+    manage->num_io_vecs = physical_buffers ;
     manage->iovecs = calloc(physical_buffers, sizeof(struct iovec));
-
     manage->a.capacity = 0;
     manage->a.data = aligned_alloc(ALLIGNMENT, total_size);
     if (!manage->a.data) {
@@ -109,7 +121,7 @@ void init_io_manager_not_fixed(struct io_manager * manage, int num_sst_tble, int
         manage->iovecs[i].iov_len = real_size;
     }
     manage->a.capacity = 0;
-
+    manage->max_buffer_size = max_single_buffer;
     int res = setup_io_uring(&manage->ring, DEPTH);
     if (res < 0) {
         perror("Failed to setup io_uring");
@@ -124,7 +136,6 @@ void init_io_manager_not_fixed(struct io_manager * manage, int num_sst_tble, int
     if (num_memtable > 0){
         init_struct_pool_kernel(manage->mem_table_buffers, &manage->a, mem_tbl_s, num_memtable);
     }
-    register_logical_segments(manage, max_single_buffer);
     manage->sst_tbl_s = sst_tbl_s;
     manage->m_tbl_s = mem_tbl_s;
 
@@ -133,6 +144,7 @@ void init_io_manager_not_fixed(struct io_manager * manage, int num_sst_tble, int
     manage->pending_sqe_count = 0;
     manage->pool.trad.four_kb = manage->four_kb;
     manage->pool.strat = FIXED;
+
     clear_tuner(&manage->tuner);
 }
 void init_io_manager(struct io_manager * manage, int num_4kb, int num_sst_tble, int num_memtable, int sst_tbl_s, int mem_tbl_s){
@@ -155,6 +167,7 @@ void init_io_manager(struct io_manager * manage, int num_4kb, int num_sst_tble, 
     manage->a.size = total_size;
     int max_to_alloc = min(max_single_buffer, total_size);
     int chunked = 0;
+    manage->num_io_vecs = physical_buffers ;
     for (int i = 0 ; i < physical_buffers; i++){
         int real_size = min(total_size - chunked, max_to_alloc);
         chunked += real_size;
@@ -162,7 +175,7 @@ void init_io_manager(struct io_manager * manage, int num_4kb, int num_sst_tble, 
         manage->iovecs[i].iov_len = real_size;
     }
     manage->a.capacity = 0;
-
+    manage->max_buffer_size = max_single_buffer;
     int res = setup_io_uring(&manage->ring, DEPTH);
     if (res < 0) {
         perror("Failed to setup io_uring");
@@ -200,6 +213,7 @@ void init_io_manager(struct io_manager * manage, int num_4kb, int num_sst_tble, 
     manage->pending_sqe_count = 0;
     manage->pool.trad.four_kb = manage->four_kb;
     manage->pool.strat = FIXED;
+
     clear_tuner(&manage->tuner);
 }
 int allign_to_page_size(int curr_size) {
@@ -224,17 +238,36 @@ int add_read_write_requests(struct io_uring *ring, struct io_manager *manage, st
     if (seq) {
         sqe->flags |= IOSQE_IO_LINK;
     }
-    
     requests->len = allign_to_page_size(requests->len);
-    
-    if (requests->op == READ) {
-        io_uring_prep_read_fixed(sqe, requests->desc.fd, requests->buf->buffy, 
-                              requests->len, requests->offset, requests->buf->id);
-    } else if (requests->op == WRITE) {
-        io_uring_prep_write_fixed(sqe, requests->desc.fd, requests->buf->buffy, 
-                               requests->len, requests->offset, requests->buf->id);
+    if (manage->pool.strat == VM_MAPPED && requests->len < manage->sst_tbl_s){
+        if (requests->op == READ) {
+            io_uring_prep_read(sqe, requests->desc.fd, requests->buf->buffy, 
+                requests->len, requests->offset);
+        }
+        else if (requests->op == WRITE){
+            io_uring_prep_write(sqe, requests->desc.fd, requests->buf->buffy, 
+                requests->len, requests->offset);
+        }
     }
-
+    else if (requests->op == UNFIXED_READ){
+         io_uring_prep_read(sqe, requests->desc.fd, requests->buf->buffy, 
+                requests->len, requests->offset);
+    }
+    else if (requests->op == UNFIXED_WRITE){
+          io_uring_prep_write(sqe, requests->desc.fd, requests->buf->buffy, 
+                requests->len, requests->offset);
+    }
+    else{
+        if (requests->op == READ) {
+            io_uring_prep_read_fixed(sqe, requests->desc.fd, requests->buf->buffy, 
+                requests->len, requests->offset, requests->buf->id);
+        } 
+        else if (requests->op == WRITE) {
+            io_uring_prep_write_fixed(sqe, requests->desc.fd, requests->buf->buffy, 
+                                   requests->len, requests->offset, requests->buf->id);
+        }
+    }
+  
     io_uring_sqe_set_data(sqe, requests);
     if (!io_uring_sq_space_left(ring)){
         int res = io_uring_submit(ring);
@@ -367,8 +400,7 @@ int add_open_close_requests(struct io_uring *ring, struct db_FILE * requests, in
     }
     return 0;
 }
-byte_buffer * select_buffer(int size){
-    struct io_manager * m  = man;
+byte_buffer * fixed_strat(struct io_manager * m, int size){
     if (size <= 4 * 1024){
         return request_struct(m->four_kb);
     }
@@ -380,22 +412,46 @@ byte_buffer * select_buffer(int size){
     }
     return NULL;
 }
-
-void return_buffer(byte_buffer * buff){
-    int size = buff->max_bytes;
+byte_buffer * select_buffer(int size){
     struct io_manager * m  = man;
-    if (size <= 4 * 1024){
-        return_struct(man->four_kb, buff, &reset_buffer);
-        return;
+    if (m->pool.strat == FIXED){
+        return fixed_strat(m, size);
     }
     if (size <= m->sst_tbl_s){
-        return_struct(m->sst_table_buffers, buff, &reset_buffer);
+        return request_struct(m->sst_table_buffers);
+    }
+    if (size <= m->m_tbl_s){
+        return request_struct(m->mem_table_buffers);
+    }
+    byte_buffer * buffer = get_buffer(m->pool, size);
+    if (m->pool.strat == PINNED_BUDDY){
+        buffer->id = ceil_int_div(buffer->buffy - m->pool.pinned.pinned, m->max_buffer_size);
+    }
+    return buffer;
+}
+void fixed_buffer_return(byte_buffer * b){
+    struct io_manager * m  = man;
+    int size= b->max_bytes;
+    if (size <= 4096){
+        return_struct(m->four_kb, b, &reset_buffer);
+    }
+    if (size <= m->sst_tbl_s){
+        return_struct(m->sst_table_buffers, b, &reset_buffer);
         return;
     }   
     if (size <= m->m_tbl_s){
-       return_struct(man->mem_table_buffers, buff, &reset_buffer);
+       return_struct(m->mem_table_buffers, b, &reset_buffer);
        return;
     }
+}
+void return_buffer(byte_buffer * buff){
+    int size = buff->max_bytes;
+    struct io_manager * m  = man;
+    if (m->pool.strat == FIXED){
+        fixed_buffer_return(buff);
+    }
+    return_buffer_strat(m->pool, buff);
+
 }
 int chain_open_op_close(struct io_uring *ring, struct io_manager * m, struct db_FILE * req){
     int r_w_flag = 0;
@@ -434,22 +490,8 @@ int chain_open_op_close(struct io_uring *ring, struct io_manager * m, struct db_
     if (res < 0) return -1;
     return 0;
 }
-int do_write(struct db_FILE * req, off_t offset, size_t len, struct io_manager * manager){
-    req->op = WRITE;
+void rw_generic(struct db_FILE * req, off_t offset, size_t len, struct io_manager * manager){
     req->len = len;
-    req->offset = offset;
-    manager->tuner.io_req_in_slice ++;
-    add_read_write_requests(&manager->ring,manager, req, 0);
-    task_t * task_w = aco_get_arg();
-    if (task_w) {
-        task_w->stat = IO_WAIT;
-    }
-    aco_yield();
-    return req->response_code;
-}
-int do_read(struct db_FILE * req, off_t offset, size_t len, struct io_manager * manager){   
-    req->len = len;
-    req->op = READ;
     req->offset = offset;
     manager->tuner.io_req_in_slice ++;
     add_read_write_requests(&manager->ring,manager, req, 0);
@@ -457,6 +499,17 @@ int do_read(struct db_FILE * req, off_t offset, size_t len, struct io_manager * 
     if (task_r) {
         task_r->stat = IO_WAIT;
     }
+}
+int do_write(struct db_FILE * req, off_t offset, size_t len, struct io_manager * manager){
+    rw_generic(req,  offset, len, manager);
+    aco_yield();
+    return req->response_code;
+}
+void do_async_rw(struct db_FILE * req, off_t offset, size_t len, struct io_manager * manager){
+    rw_generic(req,  offset, len, manager);
+}
+int do_read(struct db_FILE * req, off_t offset, size_t len, struct io_manager * manager){   
+    rw_generic(req,  offset, len, manager);
     aco_yield();
     return req->response_code;
 }
@@ -474,7 +527,6 @@ int do_open(const char * fn, struct db_FILE * req, struct io_manager * manager){
     return req->response_code;
 }
 int do_close(int fd, struct db_FILE * req, struct io_manager * manager){
-    
     req->op = CLOSE;
     add_open_close_requests(&manager->ring,req, 0);
     manager->tuner.io_req_in_slice ++;
@@ -519,15 +571,42 @@ void init_db_FILE_ctx(const int max_concurrent_ops, db_FILE * dbs){
         insert_struct(man->io_requests, &dbs[i]);
     }
 }
+void fix_on_strat(struct io_manager * m){
+    buffer_pool pool = m->pool;
+    if (pool.strat == VM_MAPPED){
+        return;
+    }
+    const int max_single_buffer = 1024 * 1024* 1024;
+    if (pool.strat == PINNED_BUDDY){
+        const int total_size =  pool.pinned.alloc.base - pool.pinned.alloc.arena;
+        uint16_t num_buffers=  ceil_int_div(total_size.arena,max_single_buffer);
+        struct iovecs * final = calloc(sizeof(struct iovec), num_buffers + m->num_io_vecs);
+        uint64_t  curr = 0;
+        for (int i = 0 ; i < num_buffers; i++){
+            int real_size = min(total_size - curr, max_single_buffer);
+            manage->iovecs[i].iov_base= &pool.pinned.pinned[curr];
+            curr += real_size;
+            manage->iovecs[i].iov_len = real_size;
+        }
+        register_logical_strat(m, max_single_buffer, num_buffers);
+        /*copy old copy, lazy and bad*/
+        memcpy(&final[num_buffers], m->iovecs, sizeof(struct iovec) * m->num_io_vecs);
+        free(m->iovecs);
+        m->iovecs = final;
+        int32_t res = io_uring_register_buffers(&manage->ring, manage->iovecs, num_buffers + m->num_io_vecs);
+        assert(res > 0);
+        
+    }
+}
 void io_prep_in(struct io_manager * io_manager, io_config config, aio_callback std_func){
     if (config.buffer_pool == FIXED){
         init_io_manager(io_manager,  config.max_concurrent_io,  config.big_buf_s, config.huge_buf_s, config.num_huge_buf, config.num_big_buf);
     }
     else{
+        /*need dumb conifg*/
+        io_manager->pool = make_b_p(config.buffer_pool, config.bp_memsize);
         init_io_manager_not_fixed(io_manager,  config.max_concurrent_io,  config.big_buf_s, config.huge_buf_s, config.num_huge_buf);
     }
-    io_manager->pool = make_b_p(config.buffer_pool, config.bp_memsize);
-
     io_manager->io_requests = create_pool(config.max_concurrent_io);
     struct db_FILE * io= malloc(sizeofdb_FILE () * config.max_concurrent_io);
     for (int i = 0; i < config.max_concurrent_io; i++){

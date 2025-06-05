@@ -2,13 +2,22 @@
 index_cache create_ind_cache(uint64_t sst_size, uint64_t partition_size, uint64_t mem_size){
     index_cache cache;
     const float overflow_mult = 1.25;
-    uint64_t num_slabs = ceil_int_div(mem_size, partition_size);
     cache.capacity = mem_size;
     cache.filled_pages = 0;
     cache.clock_hand = 0;
-    cache.frames = malloc(mem_size * sizeof(partiton_cache_element));
-    cache.ref_bits = malloc(mem_size * sizeof(uint8_t));
-    cache.max_pages = num_slabs;
+    uint64_t num_blocks=  ceil_int_div(sst_size, partition_size);
+    uint64_t num_entries = mem_size /  (num_blocks * block_ind_size());
+    cache.frames = malloc(num_entries* sizeof(partiton_cache_element));
+    cache.ref_bits = malloc(num_entries * sizeof(uint8_t));
+    cache.max_pages = num_entries;
+    /*
+    for (int i = 0; i < num_entries; i++){
+        cache.frames[i].block_indexs=  malloc(sizeof(block_index) * num_blocks);
+        for (int j = 0; j < num_blocks; j++){
+            cache.frames[i].block_indexs[j].min_key = malloc(40);
+        }
+    }
+    */
     return cache;
 }
 size_t ind_clock_evict(index_cache *c) {
@@ -98,14 +107,14 @@ partiton_cache_element * get_part(index_cache *c, sst_partition_ind * ind, const
     uint64_t free = get_free_frame(c);
     partiton_cache_element * ele=  &c->frames[free];
 
-    //ele->filter = part_from_stream(buffer, &c->memome);
-    //ele->block_indexs = slalloc(&c->memome, ind->num_blocks * block_ind_size());
-    for (int i = 0; i < ind->num_blocks; i++){
-        block_from_stream(buffer, &ele->block_indexs[i]);
-    }
+    /*zero copy/no extra allocations needed*/
+    all_stream_index(ind->num_blocks, buffer, ele->block_indexs);
+    deseralize_filter_head(buffer,&ele->filter);
+    deseralize_filter_body(buffer, &ele->filter);
     ind->blocks = ele->block_indexs;
     ind->pg = ele;
     ele->ref_count ++;
+    return_buffer(buffer);
     dbio_close(targ);
     return ele;
 }
@@ -208,7 +217,6 @@ size_t find_sst_file(list  *sst_files,  const char *key) {
             min_index = middle_index + 1;
         } 
         else {
-            
             max_index = middle_index;
         }
     }

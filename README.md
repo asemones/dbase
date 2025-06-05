@@ -29,7 +29,6 @@ Client Command
         ▼             ▼             ▼
 ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
 │ Shard 1      │ │ Shard 2      │ │ Shard 3      │
-│ Task Queue   │ │ Task Queue   │ │ Task Queue   │
 └──────┬───────┘ └──────┬───────┘ └──────┬───────┘
        │                │                │
        ▼                ▼                ▼
@@ -38,3 +37,13 @@ Client Command
 │ Coroutine    │ │ Coroutine    │ │ Coroutine    │
 │ Scheduler    │ │ Scheduler    │ │ Scheduler    │
 └──────────────┘ └──────────────┘ └──────────────┘
+
+
+FEATURES:
+LSM tree ran under a custom made async framework backed by coroutines
+Supports several buffer pool strategies, all of which are VARIABLE size, one of which is a compeletely novel design, which locks huge page memory in place to exterminate page fauls
+Supports io uring backend and kernel bypass Soon^TM
+wal for durabiltiy, value log for key-value sep for values > 512b
+Heirachal cache with record level granuality and block level granularity
+partitioned cache friendly filters
+limited copying and raw malloc

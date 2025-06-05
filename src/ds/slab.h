@@ -55,7 +55,7 @@ static inline void *slalloc(slab_allocator *A, size_t size){
         return s;
     }
     if(!A->curr || A->curr_off + size > A->pagesz){
-        A->curr    = request_struct(A->pool);
+        A->curr = request_struct(A->pool);
         if(!A->curr) return NULL;
         A->curr_off = 0;
     }
@@ -65,14 +65,14 @@ static inline void *slalloc(slab_allocator *A, size_t size){
     A->curr_off += size;
     return r;
 }
-
 static inline void slfree(slab_allocator *A, void *ptr){
     if(!ptr) return;
     char  *base = (char*)((uintptr_t)ptr & ~(A->pagesz - 1));
     size_t idx  = (base - A->region)  >> A->pagesz_shift;
     if(--A->rc[idx]) return;
     if(base == A->curr){
-         A->curr = NULL; A->curr_off = 0; 
+        A->curr = NULL; 
+        A->curr_off = 0; 
     }
     return_struct(A->pool, base, NULL);
 }
